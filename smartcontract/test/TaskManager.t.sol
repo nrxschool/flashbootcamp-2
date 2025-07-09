@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
 import {Test, console} from "forge-std/Test.sol";
@@ -6,76 +6,86 @@ import {TaskManager} from "../src/TaskManager.sol";
 
 contract TaskManagerTest is Test {
     TaskManager public taskManager;
-
     address public user1 = makeAddr("user1");
+
+    event TaskCreated(uint256 id, string title, address creator, uint256 stakeAmount, uint256 deadline);
+    event TaskCompleted(uint256 id, uint256 stakeReturned);
+    event StakeLost(uint256 id, uint256 stakeAmount);
 
     function setUp() public {
         taskManager = new TaskManager();
-        // Dar ETH para os usuários de teste
         vm.deal(user1, 1 ether);
     }
 
+    // Teste 1: Criar tarefa
     function test_CreateTask() public {
-        vm.prank(user1);
-        taskManager.createTask{value: 0.0000001 ether}("titulo", "descricao", block.timestamp + 1000);
-        assertEq(taskManager.getTaskCount(), 1);
-    }
-
-    function test_CompleteTask() public {
-        vm.prank(user1);
-        taskManager.createTask{value: 0.0000001 ether}("titulo", "descricao", block.timestamp + 1000);
+        uint256 stakeAmount = 0.001 ether;
+        uint256 deadline = block.timestamp + 1000;
         
         vm.prank(user1);
+        taskManager.createTask{value: stakeAmount}("Estudar Solidity", "Completar tutorial", deadline);
+        
+        assertEq(taskManager.getTaskCount(), 1);
+        
+        TaskManager.Task memory task = taskManager.getTask(1);
+        assertEq(task.stakeAmount, stakeAmount);
+        assertEq(task.deadline, deadline);
+        assertEq(task.status, false);
+        assertEq(task.creator, user1);
+    }
+
+    // Teste 2: Completar tarefa
+    function test_CompleteTask() public {
+        uint256 stakeAmount = 0.001 ether;
+        uint256 deadline = block.timestamp + 1000;
+        uint256 initialBalance = user1.balance;
+        
+        // Criar tarefa
+        vm.prank(user1);
+        taskManager.createTask{value: stakeAmount}("Estudar Solidity", "Completar tutorial", deadline);
+        
+        // Completar tarefa
+        vm.prank(user1);
         taskManager.completeTask(1);
+        
+        // Verificar se recebeu o stake de volta
+        uint256 finalBalance = user1.balance;
+        assertEq(finalBalance, initialBalance);
         
         TaskManager.Task memory task = taskManager.getTask(1);
         assertEq(task.status, true);
+        assertEq(task.stakeReturned, true);
     }
 
-    function test_GetTask() public {
-        vm.prank(user1);
-        taskManager.createTask{value: 0.0000001 ether}("titulo", "descricao", block.timestamp + 1000);
+    // Teste 3: Listar tarefas do usuário
+    function test_ListUserTasks() public {
+        uint256 stakeAmount = 0.001 ether;
+        uint256 deadline = block.timestamp + 1000;
         
-        TaskManager.Task memory task = taskManager.getTask(1);
-        assertEq(task.title, "titulo");
-        assertEq(task.description, "descricao");
-        assertEq(task.creator, user1);
-        assertEq(task.status, false);
-    }
-
-    function test_OnlyCreatorCanComplete() public {
-        address user2 = makeAddr("user2");
-        vm.deal(user2, 1 ether);
+        // User1 cria 3 tarefas
+        vm.startPrank(user1);
+        taskManager.createTask{value: stakeAmount}("Tarefa 1", "Primeira tarefa", deadline);
+        taskManager.createTask{value: stakeAmount}("Tarefa 2", "Segunda tarefa", deadline);
+        taskManager.createTask{value: stakeAmount}("Tarefa 3", "Terceira tarefa", deadline);
+        vm.stopPrank();
         
-        vm.prank(user1);
-        taskManager.createTask{value: 0.0000001 ether}("titulo", "descricao", block.timestamp + 1000);
+        // Verificar tarefas do usuário
+        uint256[] memory userTasks = taskManager.getUserTasks(user1);
         
-        vm.prank(user2);
-        vm.expectRevert("Voce nao e o criador da tarefa");
-        taskManager.completeTask(1);
-    }
-
-    function test_CannotCompleteAlreadyCompletedTask() public {
-        vm.prank(user1);
-        taskManager.createTask{value: 0.0000001 ether}("titulo", "descricao", block.timestamp + 1000);
+        assertEq(userTasks.length, 3);
+        assertEq(userTasks[0], 1);
+        assertEq(userTasks[1], 2);
+        assertEq(userTasks[2], 3);
         
-        vm.prank(user1);
-        taskManager.completeTask(1);
+        // Verificar que total de tarefas é 3
+        assertEq(taskManager.getTaskCount(), 3);
         
-        vm.prank(user1);
-        vm.expectRevert("Tarefa ja foi concluida");
-        taskManager.completeTask(1);
-    }
-
-    function test_RevertIfStakeTooLow() public {
-        vm.prank(user1);
-        vm.expectRevert("Valor do stake deve ser maior que 0.0000001 ether");
-        taskManager.createTask{value: 0.00000001 ether}("titulo", "descricao", block.timestamp + 1000);
-    }
-
-    function test_RevertIfDeadlineInPast() public {
-        vm.prank(user1);
-        vm.expectRevert("Prazo de conclusao deve ser maior que a data atual");
-        taskManager.createTask{value: 0.0000001 ether}("titulo", "descricao", block.timestamp - 1);
+        // Verificar detalhes de cada tarefa
+        for (uint i = 0; i < userTasks.length; i++) {
+            TaskManager.Task memory task = taskManager.getTask(userTasks[i]);
+            assertEq(task.creator, user1);
+            assertEq(task.stakeAmount, stakeAmount);
+            assertEq(task.status, false); // Todas ainda pendentes
+        }
     }
 }

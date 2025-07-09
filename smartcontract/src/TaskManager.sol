@@ -2,15 +2,11 @@
 
 pragma solidity ^0.8.13;
 
-// Criar um contrato que gerencia tarefas
-// Tarefas devem ter um titulo, descrição, data de criação, data de conclusão, status e valor de stake em wei
-// Status deve ser um enum com os valores: "Pendente", "Concluída"
-// Tarefas devem ser criadas por um endereço específico
-// Tarefas devem ser atualizadas o status de concluido por um endereço específico
-// Tarefas devem ter prazo de conclusão (timestamp)
 
-event TaskCreated(uint256 id, string title, string description, uint256 createdAt, address creator);
-event TaskCompleted(uint256 id, uint256 completedAt);
+
+event TaskCreated(uint256 id, string title, address creator, uint256 stakeAmount, uint256 deadline);
+event TaskCompleted(uint256 id, uint256 stakeReturned);
+event StakeLost(uint256 id, uint256 stakeAmount);
 
 contract TaskManager {
     struct Task {
@@ -18,35 +14,72 @@ contract TaskManager {
         string title;
         string description;
         uint256 createdAt;
-        uint256 completedAt;
-        bool status;
+        uint256 deadline;     // Prazo para conclusão
+        bool status;          // false = pendente, true = concluída
         address creator;
-        uint256 deadline;
+        uint256 stakeAmount;
+        bool stakeReturned;
     }
 
     mapping(uint256 => Task) public tasks;
-
+    mapping(address => uint256[]) public userTasks; // tarefas de cada usuário
     uint256 public taskCount = 0;
+    
+    uint256 public constant MINIMUM_STAKE = 0.001 ether;
 
-    function createTask(string memory _title, string memory _description, uint256 _deadline) public payable {
-        require(msg.value >= 0.0000001 ether, "Valor do stake deve ser maior que 0.0000001 ether");
-        require(_deadline > block.timestamp, "Prazo de conclusao deve ser maior que a data atual");
+    function createTask(
+        string memory _title, 
+        string memory _description, 
+        uint256 _deadline) public payable {
+        // require(msg.value >= MINIMUM_STAKE, "Valor minimo e 0.001 ether");
+        if(msg.value < 0.0000001 ether) {
+            revert("Valor minimo e 0.0000001 ether");
+        }
+        require(_deadline > block.timestamp, "Prazo deve ser maior que agora");
         
         taskCount++;
-        tasks[taskCount] = Task(taskCount, _title, _description, block.timestamp, 0, false, msg.sender, _deadline);
+        tasks[taskCount] = Task({
+            id: taskCount,
+            title: _title,
+            description: _description,
+            createdAt: block.timestamp,
+            deadline: _deadline,
+            status: false,
+            creator: msg.sender,
+            stakeAmount: msg.value,
+            stakeReturned: false
+        });
 
-        emit TaskCreated(taskCount, _title, _description, block.timestamp, msg.sender);
+        userTasks[msg.sender].push(taskCount);
+
+        emit TaskCreated(taskCount, _title, msg.sender, msg.value, _deadline);
     }
 
     function completeTask(uint256 _id) public {
         Task storage task = tasks[_id];
-        require(task.creator == msg.sender, "Voce nao e o criador da tarefa");
-        require(!task.status, "Tarefa ja foi concluida");
-       
+        require(task.creator == msg.sender, "Apenas o criador pode completar");
+        require(!task.status, "Tarefa ja concluida");
+        require(!task.stakeReturned, "Stake ja foi processado");
+        
         task.status = true;
-        task.completedAt = block.timestamp;
+        task.stakeReturned = true;
+        
+        // Verificar se completou no prazo
+        if (block.timestamp <= task.deadline) {
+            // ✅ NO PRAZO - Devolver stake
+            (bool success, ) = payable(task.creator).call{value: task.stakeAmount}("");
+            require(success, "Falha ao devolver stake");
+            
+            emit TaskCompleted(_id, task.stakeAmount);
+        } else {
+            // ❌ ATRASADO - Perder stake
+            emit TaskCompleted(_id, 0);
+            emit StakeLost(_id, task.stakeAmount);
+        }
+    }
 
-        emit TaskCompleted(_id, block.timestamp);
+    function getUserTasks(address _user) public view returns (uint256[] memory) {
+        return userTasks[_user];
     }
 
     function getTask(uint256 _id) public view returns (Task memory) {
@@ -55,5 +88,15 @@ contract TaskManager {
 
     function getTaskCount() public view returns (uint256) {
         return taskCount;
+    }
+
+    function getContractBalance() public view returns (uint256) {
+        return address(this).balance;
+    }
+
+    // Função auxiliar para verificar se tarefa está atrasada
+    function isTaskOverdue(uint256 _id) public view returns (bool) {
+        Task memory task = tasks[_id];
+        return !task.status && block.timestamp > task.deadline;
     }
 }
