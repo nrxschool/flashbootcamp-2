@@ -8,7 +8,7 @@ import { metaMask } from 'wagmi/connectors'
 // 🔑 Configuração do provedor Infura
 // 📝 Adicione sua chave da Infura no arquivo .env.local:
 // NEXT_PUBLIC_INFURA_PROJECT_ID=sua_chave_infura_aqui
-const infuraProjectId = process.env.NEXT_PUBLIC_INFURA_PROJECT_ID
+const sepoliaRpcUrl = process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL
 
 // ⚙️ Configuração principal - nossa "receita de conexão"
 export const config = createConfig({
@@ -22,7 +22,7 @@ export const config = createConfig({
   
   // 🌍 Conexão via Infura - provedor profissional
   transports: {
-    [sepolia.id]: http(`https://sepolia.infura.io/v3/${infuraProjectId}`)
+    [sepolia.id]: http(sepoliaRpcUrl)
   },
 })
 
