@@ -93,3 +93,36 @@ export function useContractBalance() {
     refetchBalance
   }
 }
+
+// Hook para métricas reais da blockchain
+export function useRealTaskMetrics() {
+  const { taskIds } = useTasksWithData()
+  
+  // Buscar dados das primeiras 5 tarefas (limitação do React)
+  const task1 = useTaskData(taskIds[0] ? Number(taskIds[0]) : undefined)
+  const task2 = useTaskData(taskIds[1] ? Number(taskIds[1]) : undefined) 
+  const task3 = useTaskData(taskIds[2] ? Number(taskIds[2]) : undefined)
+  const task4 = useTaskData(taskIds[3] ? Number(taskIds[3]) : undefined)
+  const task5 = useTaskData(taskIds[4] ? Number(taskIds[4]) : undefined)
+
+  const tasks = [task1.data, task2.data, task3.data, task4.data, task5.data]
+    .filter(Boolean)
+
+  let concluidas = 0
+  let totalStake = 0
+
+  tasks.forEach((task: any) => {
+    if (task.status) {
+      concluidas++
+    } else {
+      totalStake += Number(task.stakeAmount)
+    }
+  })
+
+  return {
+    total: taskIds.length,
+    concluidas,
+    pendentes: taskIds.length - concluidas,
+    weiInStake: totalStake / 1e18
+  }
+}

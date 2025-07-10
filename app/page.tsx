@@ -13,7 +13,7 @@ import { AlertCircle, CheckCircle2, ListTodo, Loader, Coins, PlusCircle, CheckSq
 
 // 🔧 Imports Web3
 import { useConnect, useDisconnect, useChainId } from 'wagmi'
-import { useTasksWithData, useWeb3Status, useContractBalance } from '@/hooks/useTaskManager'
+import { useTasksWithData, useWeb3Status, useContractBalance, useRealTaskMetrics } from '@/hooks/useTaskManager'
 import { CreateTaskModal } from '@/components/CreateTaskModal'
 import { TaskItem } from '@/components/TaskItem'
 import { sepolia } from 'wagmi/chains'
@@ -28,7 +28,8 @@ export default function Web3TodoPage() {
   const { disconnect } = useDisconnect()
   const { isConnected, shortAddress } = useWeb3Status()
   const { taskIds, isLoading: loadingTasks, refetch: refetchTasks } = useTasksWithData()
-  const { balanceInEth, refetchBalance } = useContractBalance()
+  const { refetchBalance } = useContractBalance()
+  const metrics = useRealTaskMetrics()
   const chainId = useChainId()
   
   // Verificar se está na rede correta
@@ -46,14 +47,6 @@ export default function Web3TodoPage() {
 
   const handleRefresh = async () => {
     await Promise.all([refetchTasks(), refetchBalance()])
-  }
-
-  // Métricas simples
-  const metrics = {
-    total: taskIds?.length || 0,
-    concluidas: 0, // Será mostrado quando implementarmos busca individual
-    pendentes: taskIds?.length || 0,
-    weiInStake: balanceInEth
   }
 
   return (
@@ -197,10 +190,10 @@ export default function Web3TodoPage() {
                   <p className="text-gray-500">Você ainda não tem tarefas. Crie sua primeira!</p>
                 </div>
               ) : isConnected && taskIds ? (
-                taskIds.map((taskId: number) => (
+                taskIds.map((taskId: bigint) => (
                   <TaskItem 
-                    key={taskId} 
-                    taskId={taskId} 
+                    key={Number(taskId)} 
+                    taskId={Number(taskId)} 
                     isConnected={isConnected} 
                   />
                 ))
