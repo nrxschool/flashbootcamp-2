@@ -3,35 +3,26 @@
 // 📦 Importa as ferramentas necessárias
 import { createConfig, http } from 'wagmi'
 import { sepolia } from 'wagmi/chains'
-import { metaMask, walletConnect } from 'wagmi/connectors'
+import { metaMask } from 'wagmi/connectors'
 
-// 🔑 Configurações para funcionamento imediato
-// 💡 Usando providers públicos para teste - funciona sem chaves
-const projectId = 'fb02dapp' // ID único para este projeto
+// 🔑 Configuração do provedor Infura
+// 📝 Adicione sua chave da Infura no arquivo .env.local:
+// NEXT_PUBLIC_INFURA_PROJECT_ID=sua_chave_infura_aqui
+const infuraProjectId = process.env.NEXT_PUBLIC_INFURA_PROJECT_ID
 
 // ⚙️ Configuração principal - nossa "receita de conexão"
 export const config = createConfig({
   // 🌐 Em qual blockchain vamos trabalhar
   chains: [sepolia],
   
-  // 🔌 Quais carteiras podem conectar
+  // 🔌 Apenas MetaMask como conector
   connectors: [
-    metaMask(),                     // MetaMask (mais popular)
-    walletConnect({ 
-      projectId,                    // ID do projeto
-      metadata: {
-        name: 'FB02 TODO DApp',
-        description: 'Gerencie tarefas na blockchain',
-        url: 'http://localhost:3000',
-        icons: ['https://via.placeholder.com/96x96.png?text=TODO']
-      }
-    }),
+    metaMask(),  // MetaMask (mais popular e confiável)
   ],
   
-  // 🌍 Como conectar na internet da blockchain - provider confiável
+  // 🌍 Conexão via Infura - provedor profissional
   transports: {
-    // 🆓 RPC público gratuito e confiável
-    [sepolia.id]: http(process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL)
+    [sepolia.id]: http(`https://sepolia.infura.io/v3/${infuraProjectId}`)
   },
 })
 

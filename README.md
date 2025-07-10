@@ -2370,34 +2370,43 @@ import { metaMask, walletConnect } from 'wagmi/connectors'
 - **`sepolia`**: É a **"rede de teste"** do Ethereum (como uma cidade de treino)
 - **Por que Sepolia**: É grátis e seguro para aprender (não usa dinheiro real)
 
-**`import { metaMask, walletConnect } from 'wagmi/connectors'`**
-- **Analogia**: Como escolher **"quais aparelhos"** podem conectar na sua internet
-- **`metaMask`**: Conecta carteiras MetaMask (o mais popular)
-- **`walletConnect`**: Conecta carteiras do celular (Trust Wallet, etc.)
+**`import { metaMask } from 'wagmi/connectors'`**
+- **Analogia**: Como escolher **"qual aparelho"** pode conectar na sua internet
+- **`metaMask`**: Conecta carteiras MetaMask (o mais popular e confiável)
 
 ---
 
 #### 🔑 **Seção 1: Configurações de Acesso**
 
 ```typescript
-// 🔑 Configurações (substitua pelos seus valores)
-const projectId = 'SEU_WALLETCONNECT_PROJECT_ID' // De https://cloud.walletconnect.com
-const alchemyApiKey = 'SUA_ALCHEMY_API_KEY'      // De https://alchemy.com
+// 🔑 Configuração do provedor Infura
+// 📝 Adicione sua chave da Infura no arquivo .env.local:
+// NEXT_PUBLIC_INFURA_PROJECT_ID=sua_chave_infura_aqui
+const infuraProjectId = process.env.NEXT_PUBLIC_INFURA_PROJECT_ID
 ```
 
-**📖 Explicação das chaves:**
+**📖 Explicação da configuração:**
 
-**`const projectId = 'SEU_WALLETCONNECT_PROJECT_ID'`**
-- **Analogia**: Como o **"código do seu plano de internet"** 
-- **O que é**: Identificador único para carteiras mobile se conectarem
-- **Onde pegar**: Site oficial da WalletConnect (gratuito)
-- **Para que serve**: Permite que apps mobile conectem ao seu DApp
-
-**`const alchemyApiKey = 'SUA_ALCHEMY_API_KEY'`**
+**`const infuraProjectId = process.env.NEXT_PUBLIC_INFURA_PROJECT_ID`**
 - **Analogia**: Como a **"senha da sua conexão"** com a operadora de internet
-- **O que é**: Chave de acesso aos serviços da Alchemy
-- **Onde pegar**: Site oficial da Alchemy (gratuito até certo limite)
-- **Para que serve**: Permite que seu app "fale" com a blockchain Ethereum
+- **O que é**: Chave de acesso aos serviços da Infura (provedor blockchain)
+- **Onde pegar**: Site oficial da Infura (https://infura.io/) - gratuito até 100k requisições/dia
+- **Para que serve**: Permite que seu app "fale" com a blockchain Ethereum via Infura
+- **Como configurar**: 
+  1. **Obter chave da Infura**:
+     - Acesse: https://infura.io/
+     - Crie conta gratuita (até 100k requisições/dia)
+     - Crie novo projeto → copie o "Project ID"
+  2. **Configurar no projeto**:
+     - Crie arquivo `.env.local` na raiz do projeto
+     - Adicione a linha: `NEXT_PUBLIC_INFURA_PROJECT_ID=sua_chave_aqui`
+           - Exemplo: `NEXT_PUBLIC_INFURA_PROJECT_ID=9aa3d95b3bc440fa88ea12eaa4456161`
+
+**🔒 Segurança e Boas Práticas:**
+- **`.env.local`**: Arquivo que **nunca** deve ser commitado no Git
+- **`NEXT_PUBLIC_`**: Prefixo necessário para variáveis acessíveis no frontend
+- **Infura gratuita**: Limite de 100.000 requisições por dia (suficiente para desenvolvimento)
+- **Sem chave**: App não consegue conectar com a blockchain
 
 ---
 
@@ -2435,17 +2444,17 @@ export const config = createConfig({
 - **`[sepolia]`**: Só a rede Sepolia (array com um item)
 - **Por que array**: Você pode adicionar mais redes depois: `[sepolia, mainnet]`
 
-**`connectors: [metaMask(), walletConnect({ projectId })],`**
-- **Analogia**: Como listar **"quais tipos de aparelho podem conectar"**
+**`connectors: [metaMask()],`**
+- **Analogia**: Como definir **"qual aparelho pode conectar"**
 - **`connectors`**: Lista de carteiras aceitas pelo seu app
-- **`metaMask()`**: Carteira MetaMask (extensão do navegador)
-- **`walletConnect({ projectId })`**: Carteiras mobile (precisa do projectId)
+- **`metaMask()`**: Apenas MetaMask (extensão do navegador) - mais simples e confiável
 
-**`transports: { [sepolia.id]: http(...) }`**
+**`transports: { [sepolia.id]: http(\`https://sepolia.infura.io/v3/\${infuraProjectId}\`) }`**
 - **Analogia**: Como configurar **"qual cabo usar para cada cidade"**
 - **`transports`**: Como se conectar fisicamente com cada blockchain
 - **`[sepolia.id]`**: Para a rede Sepolia especificamente
-- **`http(...)`**: Usar conexão HTTP com a URL da Alchemy
+- **`http(...)`**: Usar conexão HTTP com a URL da Infura
+- **Template string**: Usa a chave da Infura da variável de ambiente
 
 ---
 
@@ -2553,8 +2562,8 @@ export const CONTRACT_ABI = [
 **🎯 Analogia completa**: 
 É como **configurar um sistema de delivery**:
 - **Rede** = qual cidade (Sepolia)
-- **Carteiras** = quais apps de pagamento aceitar (MetaMask, etc.)
-- **Transporte** = qual internet usar (Alchemy)
+- **Carteiras** = qual app de pagamento aceitar (apenas MetaMask)
+- **Transporte** = qual internet usar (Infura)
 - **Endereço** = onde fica o restaurante (CONTRACT_ADDRESS)
 - **ABI** = cardápio do restaurante (que pratos têm, ingredientes, preços)
 
@@ -2850,6 +2859,7 @@ export default function RootLayout({
 - **Provider isolado**: Mudanças Web3 ficam em um lugar só
 - **Configuração centralizada**: lib/web3.ts tem tudo
 - **Tipagem segura**: TypeScript previne erros
+- **Simplicidade**: Apenas MetaMask reduz complexidade e bugs
 
 **✅ Experiência do Usuário:**
 - **Loading automático**: Cache gerencia estados de carregamento
@@ -4185,9 +4195,9 @@ NEXT_PUBLIC_ALCHEMY_API_KEY=sua_alchemy_key
 - **Frontend**: Next.js 15 + TypeScript + Tailwind CSS
 - **UI Components**: shadcn/ui + Radix UI + Lucide Icons
 - **Web3**: wagmi + viem + TanStack Query
-- **Blockchain**: Ethereum Sepolia + Alchemy/Infura
+- **Blockchain**: Ethereum Sepolia + Infura
 - **Smart Contract**: Solidity + Foundry
-- **Carteira**: MetaMask + WalletConnect
+- **Carteira**: MetaMask
 
 **🚀 Próximos Passos:**
 - Deploy em produção no Vercel
