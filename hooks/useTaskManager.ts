@@ -1,96 +1,185 @@
 
-import { useWriteContract, useReadContract, useAccount } from "wagmi";
-import { CONTRACT_ADDRESS, CONTRACT_ABI } from "@/lib/web3";
-import { parseEther, formatEther } from 'viem'
+import { useReadContract, useWriteContract, useAccount } from 'wagmi'
+import { CONTRACT_ADDRESS, CONTRACT_ABI } from '@/lib/web3'
+import { parseEther } from 'viem'
 
-export interface Task {
-    id: number;
-    title: string;
-    description: string;
-    createdAt: bigint;
-    completedAt: bigint;
-    status: boolean;
-    creator: string;
-    deadline: bigint;
-    
-}
-
-export function useTaskManager() {
+// 🎣 Hook: Buscar minhas tarefas
+export function useMyTasks() {
   const { address } = useAccount()
-
-  const { writeContract, isPending: isCreating } = useWriteContract()
-
-  const createTask = async (title: string, description: string, deadline: bigint, stakeAmount: string) => {
-    if(!address) {
-      throw new Error("No address found")
-    }
-
-    const stakeInWei = parseEther(stakeAmount)
-
-    const minimumStake = parseEther("0.0000001")
-
-    if(stakeInWei < minimumStake) {
-      throw new Error("Valor do stake deve ser maior que 0.0000001 ETH")
-    }
-
-    const currentTimestamp = Math.floor(Date.now() / 1000)
-
-    if(deadline <= currentTimestamp) {
-      throw new Error("Prazo deve ser maior que a data atual")
-    }
-
-   return writeContract({
+  
+  return useReadContract({
     address: CONTRACT_ADDRESS,
     abi: CONTRACT_ABI,
-    functionName: "createTask",
-    args: [title, description, BigInt(deadline)],
-    value: stakeInWei,
-   })
-
-}
-
-const completeTask = async (taskId: number) => {
-  if(!address) {
-    throw new Error("No address found")
-  }
-
-  return writeContract({
-    address: CONTRACT_ADDRESS,                    
-    abi: CONTRACT_ABI,                           
-    functionName: 'completeTask',                
-    args: [BigInt(taskId)],                      
+    functionName: 'getUserTasks',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: !!address, // Só busca se usuário conectado
+    }
   })
-
 }
 
-const {data: tasksCount, refetch: refetchTasksCount} = useReadContract({
-  address: CONTRACT_ADDRESS,
-  abi: CONTRACT_ABI,
-  functionName: 'getTaskCount',
-})
+// 🔍 Hook: Buscar dados de uma tarefa específica
+export function useTask(taskId: number | undefined) {
+  return useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: CONTRACT_ABI,
+    functionName: 'getTask',
+    args: taskId ? [BigInt(taskId)] : undefined,
+    query: {
+      enabled: !!taskId, // Só busca se taskId existir
+    }
+  })
+}
 
-const useTask = (taskId: number) => {
-    return useReadContract({
+// 📊 Hook: Buscar total de tarefas no sistema
+export function useTotalTasks() {
+  return useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: CONTRACT_ABI,
+    functionName: 'getTaskCount',
+  })
+}
+
+// ✍️ Hook: Criar nova tarefa
+export function useCreateTask() {
+  const { writeContract, isPending, error } = useWriteContract()
+  
+  const createTask = async (
+    title: string, 
+    description: string, 
+    deadline: Date,
+    stakeAmount: string = '0.001' // ETH
+  ) => {
+    try {
+      // 🗓️ Converte data para timestamp
+      const deadlineTimestamp = Math.floor(deadline.getTime() / 1000)
+      
+      // 📝 Chama função do contrato
+      await writeContract({
         address: CONTRACT_ADDRESS,
         abi: CONTRACT_ABI,
-        functionName: 'getTask',
-        args: [BigInt(taskId)],
-        query: {
-            enabled: taskId > 0,
-        }
-    })
-}
-
-return {
+        functionName: 'createTask',
+        args: [title, description, BigInt(deadlineTimestamp)],
+        value: parseEther(stakeAmount), // Converte ETH para Wei
+      })
+      
+      console.log('✅ Tarefa criada com sucesso!')
+      
+    } catch (err) {
+      console.error('❌ Erro ao criar tarefa:', err)
+      throw err
+    }
+  }
+  
+  return {
     createTask,
-    completeTask,
-    tasksCount,
-    refetchTasksCount,
-    useTask,
-    isCreating,
-    userAddress: address,
+    isPending, // true = transação sendo processada
+    error      // detalhes do erro, se houver
+  }
 }
 
+// ✅ Hook: Completar tarefa
+export function useCompleteTask() {
+  const { writeContract, isPending, error } = useWriteContract()
+  
+  const completeTask = async (taskId: number) => {
+    try {
+      await writeContract({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: 'completeTask',
+        args: [BigInt(taskId)],
+      })
+      
+      console.log('✅ Tarefa completada!')
+      
+    } catch (err) {
+      console.error('❌ Erro ao completar tarefa:', err)
+      throw err
+    }
+  }
+  
+  return {
+    completeTask,
+    isPending,
+    error
+  }
+}
+
+// 🔗 Hook: Status da conexão
+export function useWeb3Status() {
+  const { address, isConnected } = useAccount()
+  
+  return {
+    address,
+    isConnected,
+    // Endereço formatado para exibição
+    shortAddress: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : null
+  }
+}
+
+// 🎣 Hook: Buscar uma tarefa específica por ID
+export function useTaskData(taskId: number | undefined) {
+  return useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: CONTRACT_ABI,
+    functionName: 'getTask',
+    args: taskId ? [BigInt(taskId)] : undefined,
+    query: {
+      enabled: !!taskId,
+    }
+  })
+}
+
+// 🎣 Hook: Buscar tarefas com dados completos (versão funcional)
+export function useTasksWithData() {
+  const { data: taskIds, isLoading: loadingIds } = useMyTasks()
+  
+  // Debug: Mostrar IDs das tarefas
+  console.log('🔍 Task IDs:', taskIds, 'Loading:', loadingIds)
+  
+  // Se ainda está carregando IDs ou não há IDs
+  if (loadingIds || !taskIds) {
+    return {
+      tasks: [],
+      isLoading: true,
+      taskIds: []
+    }
+  }
+
+  // Se não há tarefas, retorna vazio
+  if (!Array.isArray(taskIds) || taskIds.length === 0) {
+    return {
+      tasks: [],
+      isLoading: false,
+      taskIds: []
+    }
+  }
+
+  // Para cada ID, vamos precisar buscar os dados da tarefa
+  // Como não podemos usar hooks dinamicamente, retornamos os IDs para o componente processar
+  return {
+    tasks: [], // Será preenchido pelo componente
+    isLoading: false,
+    taskIds: taskIds
+  }
+}
+
+// 💰 Hook: Buscar balance do contrato
+export function useContractBalance() {
+  const { data: balance, isLoading: balanceLoading } = useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: CONTRACT_ABI,
+    functionName: 'getContractBalance',
+  })
+  
+  console.log('🔍 Balance:', balance, 'Loading:', balanceLoading)
+  
+  return {
+    balance,
+    balanceLoading,
+    balanceInEth: balance ? Number(balance) / 1e18 : 0
+  }
 }
 
 

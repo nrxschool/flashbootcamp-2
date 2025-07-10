@@ -25,7 +25,7 @@ contract TaskManager {
     mapping(address => uint256[]) public userTasks; // tarefas de cada usuário
     uint256 public taskCount = 0;
     
-    uint256 public constant MINIMUM_STAKE = 0.001 ether;
+    uint256 public constant MINIMUM_STAKE = 0.0000001 ether;
 
     function createTask(
         string memory _title, 

@@ -5,9 +5,9 @@ import { createConfig, http } from 'wagmi'
 import { sepolia } from 'wagmi/chains'
 import { metaMask, walletConnect } from 'wagmi/connectors'
 
-// 🔑 Configurações (substitua pelos seus valores)
-const projectId = 'SEU_WALLETCONNECT_PROJECT_ID' // De https://cloud.walletconnect.com
-const alchemyApiKey = 'SUA_ALCHEMY_API_KEY'      // De https://alchemy.com
+// 🔑 Configurações para funcionamento imediato
+// 💡 Usando providers públicos para teste - funciona sem chaves
+const projectId = 'fb02dapp' // ID único para este projeto
 
 // ⚙️ Configuração principal - nossa "receita de conexão"
 export const config = createConfig({
@@ -17,84 +17,378 @@ export const config = createConfig({
   // 🔌 Quais carteiras podem conectar
   connectors: [
     metaMask(),                     // MetaMask (mais popular)
-    walletConnect({ projectId }),   // WalletConnect (carteiras mobile)
+    walletConnect({ 
+      projectId,                    // ID do projeto
+      metadata: {
+        name: 'FB02 TODO DApp',
+        description: 'Gerencie tarefas na blockchain',
+        url: 'http://localhost:3000',
+        icons: ['https://via.placeholder.com/96x96.png?text=TODO']
+      }
+    }),
   ],
   
-  // 🌍 Como conectar na internet da blockchain
+  // 🌍 Como conectar na internet da blockchain - provider confiável
   transports: {
-    [sepolia.id]: http(`https://eth-sepolia.g.alchemy.com/v2/${alchemyApiKey}`)
+    // 🆓 RPC público gratuito e confiável
+    [sepolia.id]: http(process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL)
   },
 })
 
-// 📍 Endereço do nosso smart contract (copie do deploy)
-export const CONTRACT_ADDRESS = '0xSEU_ENDERECO_DO_CONTRATO_AQUI'
+// 📍 Endereço do nosso smart contract (deployado com sucesso!)
+// ✅ ATUALIZADO: Contrato TaskManager na rede Sepolia
+export const CONTRACT_ADDRESS = '0xb17d39826a1b83f7685de1ebc924b3185b677383' as `0x${string}`
 
 // 📋 ABI - "Manual de instruções" do contrato
 export const CONTRACT_ABI = [
-  // 📝 Função: createTask (criar nova tarefa)
   {
-    "inputs": [
-      { "internalType": "string", "name": "_title", "type": "string" },
-      { "internalType": "string", "name": "_description", "type": "string" },
-      { "internalType": "uint256", "name": "_deadline", "type": "uint256" }
-    ],
-    "name": "createTask",
-    "outputs": [],
-    "stateMutability": "payable",  // ← Aceita ETH junto
-    "type": "function"
+      "type": "function",
+      "name": "MINIMUM_STAKE",
+      "inputs": [],
+      "outputs": [
+          {
+              "name": "",
+              "type": "uint256",
+              "internalType": "uint256"
+          }
+      ],
+      "stateMutability": "view"
   },
-  
-  // ✅ Função: completeTask (marcar como concluída)
   {
-    "inputs": [
-      { "internalType": "uint256", "name": "_taskId", "type": "uint256" }
-    ],
-    "name": "completeTask",
-    "outputs": [],
-    "stateMutability": "nonpayable", // ← Só executa, não recebe ETH
-    "type": "function"
+      "type": "function",
+      "name": "completeTask",
+      "inputs": [
+          {
+              "name": "_id",
+              "type": "uint256",
+              "internalType": "uint256"
+          }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
   },
-  
-  // 👀 Função: getMyTasks (buscar minhas tarefas)
   {
-    "inputs": [],
-    "name": "getMyTasks",
-    "outputs": [
-      { "internalType": "uint256[]", "name": "", "type": "uint256[]" }
-    ],
-    "stateMutability": "view",  // ← Só lê, não modifica nada
-    "type": "function"
+      "type": "function",
+      "name": "createTask",
+      "inputs": [
+          {
+              "name": "_title",
+              "type": "string",
+              "internalType": "string"
+          },
+          {
+              "name": "_description",
+              "type": "string",
+              "internalType": "string"
+          },
+          {
+              "name": "_deadline",
+              "type": "uint256",
+              "internalType": "uint256"
+          }
+      ],
+      "outputs": [],
+      "stateMutability": "payable"
   },
-  
-  // 🔍 Função: tasks (buscar uma tarefa específica)
   {
-    "inputs": [
-      { "internalType": "uint256", "name": "", "type": "uint256" }
-    ],
-    "name": "tasks",
-    "outputs": [
-      { "internalType": "uint256", "name": "id", "type": "uint256" },
-      { "internalType": "string", "name": "title", "type": "string" },
-      { "internalType": "string", "name": "description", "type": "string" },
-      { "internalType": "uint256", "name": "createdAt", "type": "uint256" },
-      { "internalType": "uint256", "name": "deadline", "type": "uint256" },
-      { "internalType": "bool", "name": "isCompleted", "type": "bool" },
-      { "internalType": "address", "name": "creator", "type": "address" },
-      { "internalType": "uint256", "name": "stake", "type": "uint256" },
-      { "internalType": "bool", "name": "stakeProcessed", "type": "bool" }
-    ],
-    "stateMutability": "view",
-    "type": "function"
+      "type": "function",
+      "name": "getContractBalance",
+      "inputs": [],
+      "outputs": [
+          {
+              "name": "",
+              "type": "uint256",
+              "internalType": "uint256"
+          }
+      ],
+      "stateMutability": "view"
   },
-  
-  // 🔢 Função: totalTasks (total de tarefas criadas)
   {
-    "inputs": [],
-    "name": "totalTasks",
-    "outputs": [
-      { "internalType": "uint256", "name": "", "type": "uint256" }
-    ],
-    "stateMutability": "view",
-    "type": "function"
+      "type": "function",
+      "name": "getTask",
+      "inputs": [
+          {
+              "name": "_id",
+              "type": "uint256",
+              "internalType": "uint256"
+          }
+      ],
+      "outputs": [
+          {
+              "name": "",
+              "type": "tuple",
+              "internalType": "struct TaskManager.Task",
+              "components": [
+                  {
+                      "name": "id",
+                      "type": "uint256",
+                      "internalType": "uint256"
+                  },
+                  {
+                      "name": "title",
+                      "type": "string",
+                      "internalType": "string"
+                  },
+                  {
+                      "name": "description",
+                      "type": "string",
+                      "internalType": "string"
+                  },
+                  {
+                      "name": "createdAt",
+                      "type": "uint256",
+                      "internalType": "uint256"
+                  },
+                  {
+                      "name": "deadline",
+                      "type": "uint256",
+                      "internalType": "uint256"
+                  },
+                  {
+                      "name": "status",
+                      "type": "bool",
+                      "internalType": "bool"
+                  },
+                  {
+                      "name": "creator",
+                      "type": "address",
+                      "internalType": "address"
+                  },
+                  {
+                      "name": "stakeAmount",
+                      "type": "uint256",
+                      "internalType": "uint256"
+                  },
+                  {
+                      "name": "stakeReturned",
+                      "type": "bool",
+                      "internalType": "bool"
+                  }
+              ]
+          }
+      ],
+      "stateMutability": "view"
+  },
+  {
+      "type": "function",
+      "name": "getTaskCount",
+      "inputs": [],
+      "outputs": [
+          {
+              "name": "",
+              "type": "uint256",
+              "internalType": "uint256"
+          }
+      ],
+      "stateMutability": "view"
+  },
+  {
+      "type": "function",
+      "name": "getUserTasks",
+      "inputs": [
+          {
+              "name": "_user",
+              "type": "address",
+              "internalType": "address"
+          }
+      ],
+      "outputs": [
+          {
+              "name": "",
+              "type": "uint256[]",
+              "internalType": "uint256[]"
+          }
+      ],
+      "stateMutability": "view"
+  },
+  {
+      "type": "function",
+      "name": "isTaskOverdue",
+      "inputs": [
+          {
+              "name": "_id",
+              "type": "uint256",
+              "internalType": "uint256"
+          }
+      ],
+      "outputs": [
+          {
+              "name": "",
+              "type": "bool",
+              "internalType": "bool"
+          }
+      ],
+      "stateMutability": "view"
+  },
+  {
+      "type": "function",
+      "name": "taskCount",
+      "inputs": [],
+      "outputs": [
+          {
+              "name": "",
+              "type": "uint256",
+              "internalType": "uint256"
+          }
+      ],
+      "stateMutability": "view"
+  },
+  {
+      "type": "function",
+      "name": "tasks",
+      "inputs": [
+          {
+              "name": "",
+              "type": "uint256",
+              "internalType": "uint256"
+          }
+      ],
+      "outputs": [
+          {
+              "name": "id",
+              "type": "uint256",
+              "internalType": "uint256"
+          },
+          {
+              "name": "title",
+              "type": "string",
+              "internalType": "string"
+          },
+          {
+              "name": "description",
+              "type": "string",
+              "internalType": "string"
+          },
+          {
+              "name": "createdAt",
+              "type": "uint256",
+              "internalType": "uint256"
+          },
+          {
+              "name": "deadline",
+              "type": "uint256",
+              "internalType": "uint256"
+          },
+          {
+              "name": "status",
+              "type": "bool",
+              "internalType": "bool"
+          },
+          {
+              "name": "creator",
+              "type": "address",
+              "internalType": "address"
+          },
+          {
+              "name": "stakeAmount",
+              "type": "uint256",
+              "internalType": "uint256"
+          },
+          {
+              "name": "stakeReturned",
+              "type": "bool",
+              "internalType": "bool"
+          }
+      ],
+      "stateMutability": "view"
+  },
+  {
+      "type": "function",
+      "name": "userTasks",
+      "inputs": [
+          {
+              "name": "",
+              "type": "address",
+              "internalType": "address"
+          },
+          {
+              "name": "",
+              "type": "uint256",
+              "internalType": "uint256"
+          }
+      ],
+      "outputs": [
+          {
+              "name": "",
+              "type": "uint256",
+              "internalType": "uint256"
+          }
+      ],
+      "stateMutability": "view"
+  },
+  {
+      "type": "event",
+      "name": "StakeLost",
+      "inputs": [
+          {
+              "name": "id",
+              "type": "uint256",
+              "indexed": false,
+              "internalType": "uint256"
+          },
+          {
+              "name": "stakeAmount",
+              "type": "uint256",
+              "indexed": false,
+              "internalType": "uint256"
+          }
+      ],
+      "anonymous": false
+  },
+  {
+      "type": "event",
+      "name": "TaskCompleted",
+      "inputs": [
+          {
+              "name": "id",
+              "type": "uint256",
+              "indexed": false,
+              "internalType": "uint256"
+          },
+          {
+              "name": "stakeReturned",
+              "type": "uint256",
+              "indexed": false,
+              "internalType": "uint256"
+          }
+      ],
+      "anonymous": false
+  },
+  {
+      "type": "event",
+      "name": "TaskCreated",
+      "inputs": [
+          {
+              "name": "id",
+              "type": "uint256",
+              "indexed": false,
+              "internalType": "uint256"
+          },
+          {
+              "name": "title",
+              "type": "string",
+              "indexed": false,
+              "internalType": "string"
+          },
+          {
+              "name": "creator",
+              "type": "address",
+              "indexed": false,
+              "internalType": "address"
+          },
+          {
+              "name": "stakeAmount",
+              "type": "uint256",
+              "indexed": false,
+              "internalType": "uint256"
+          },
+          {
+              "name": "deadline",
+              "type": "uint256",
+              "indexed": false,
+              "internalType": "uint256"
+          }
+      ],
+      "anonymous": false
   }
 ] as const

@@ -1462,8 +1462,10 @@ vm.stopBroadcast();
 
 **Comando para usar**:
 ```bash
-forge script script/DeployTaskManager.s.sol:DeployTaskManager --rpc-url <REDE> --private-key <SUA_CHAVE> --broadcast
+forge script script/TaskManager.s.sol:TaskManagerScript --rpc-url <REDE> --private-key <SUA_CHAVE> --broadcast
 ```
+
+**🎯 Importante**: Note que o script se chama `TaskManager.s.sol` e a classe é `TaskManagerScript`. Este é o comando correto baseado na estrutura real do projeto.
 
 **Analogia**: Como usar um **"app de construção"** que faz tudo automaticamente!
 
@@ -1683,10 +1685,58 @@ Adicione no `.gitignore`:
 
 #### 🏗️ **Executando o Deploy:**
 
+**🔧 Pré-requisito IMPORTANTE: Carregar Variáveis de Ambiente**
+
+Antes de executar o comando de deploy, você **DEVE** carregar as variáveis do arquivo `.env`:
+
+```bash
+# 🔑 PRIMEIRO: Carregar as variáveis de ambiente
+source .env
+
+# ✅ Verificar se as variáveis foram carregadas
+echo "RPC: $SEPOLIA_RPC_URL"
+echo "Private Key configurada: $([ -n "$PRIVATE_KEY" ] && echo "✅ SIM" || echo "❌ NÃO")"
+echo "Etherscan API: $([ -n "$ETHERSCAN_API_KEY" ] && echo "✅ SIM" || echo "❌ NÃO")"
+```
+
+**💡 Por que isso é necessário?**
+- O comando usa variáveis como `$SEPOLIA_RPC_URL`, `$PRIVATE_KEY`, `$ETHERSCAN_API_KEY`
+- Sem o `source .env`, essas variáveis ficam vazias e o comando falha
+- É como **"logar no sistema"** antes de usar seus dados
+
+**📋 Exemplo Visual:**
+
+```bash
+# ❌ SEM carregar .env - FALHA!
+forge script script/TaskManager.s.sol:TaskManagerScript --rpc-url $SEPOLIA_RPC_URL
+# Resultado: --rpc-url ""  (vazio!)
+
+# ✅ COM source .env - FUNCIONA!
+source .env
+forge script script/TaskManager.s.sol:TaskManagerScript --rpc-url $SEPOLIA_RPC_URL  
+# Resultado: --rpc-url "https://sepolia.infura.io/v3/1b375955f267496abf270f2423801349"
+```
+
+**🔍 Como as variáveis são substituídas:**
+- `$SEPOLIA_RPC_URL` → `https://sepolia.infura.io/v3/SEU_PROJECT_ID`
+- `$PRIVATE_KEY` → `0x1234567890abcdef...` (sua chave privada)
+- `$ETHERSCAN_API_KEY` → `ABC123DEF456...` (sua API key)
+
 **1. 💻 Comando de Deploy:**
 
 ```bash
-forge script script/DeployTaskManager.s.sol:DeployTaskManager \
+# Opção A: Carregar variáveis E executar deploy em um comando
+source .env && forge script script/TaskManager.s.sol:TaskManagerScript \
+  --rpc-url $SEPOLIA_RPC_URL \
+  --private-key $PRIVATE_KEY \
+  --broadcast \
+  --verify \
+  --etherscan-api-key $ETHERSCAN_API_KEY \
+  -vvvv
+
+# Opção B: Carregar variáveis primeiro, depois executar
+source .env
+forge script script/TaskManager.s.sol:TaskManagerScript \
   --rpc-url $SEPOLIA_RPC_URL \
   --private-key $PRIVATE_KEY \
   --broadcast \
@@ -1694,6 +1744,8 @@ forge script script/DeployTaskManager.s.sol:DeployTaskManager \
   --etherscan-api-key $ETHERSCAN_API_KEY \
   -vvvv
 ```
+
+**✅ Este é o comando testado e funcionando!** Note que usamos `TaskManager.s.sol:TaskManagerScript` (não `DeployTaskManager.s.sol`).
 
 **Quebrado em partes:**
 - `forge script` = Executar script de deploy
@@ -1769,6 +1821,47 @@ cast send 0xSEU_CONTRATO_ADDRESS \
 - **Transações**: Aba "Txns" mostra todas as interações
 
 **Analogia**: Como **"inaugurar sua loja"** numa rua movimentada - agora todo mundo pode visitá-la!
+
+#### 🚨 **Troubleshooting - Problemas Comuns**
+
+**Erro: "No such file or directory: script/DeployTaskManager.s.sol"**
+- **❌ Problema**: Script não existe com esse nome
+- **✅ Solução**: Use `script/TaskManager.s.sol:TaskManagerScript`
+
+**Erro: "a value is required for '--fork-url' but none was supplied"**
+- **❌ Problema**: Comando quebrado em múltiplas linhas
+- **✅ Solução**: Execute o comando completo em uma linha ou use `\` para quebra
+
+**🚨 Erro: Variáveis vazias ou "Invalid RPC URL"**
+- **❌ Problema**: Não carregou o arquivo `.env` antes do comando
+- **✅ Solução**: SEMPRE execute `source .env` primeiro
+- **🔍 Como verificar**: `echo $SEPOLIA_RPC_URL` deve mostrar a URL completa
+
+**🚨 Erro: "insufficient funds for gas * price + value"**
+- **❌ Problema**: Carteira sem ETH suficiente para pagar gas
+- **✅ Solução**: Pegue ETH de teste no faucet Sepolia
+
+**📋 Checklist antes do deploy:**
+```bash
+# 1. Verificar se está na pasta smartcontract
+pwd  # Deve mostrar: .../fb02/smartcontract
+
+# 2. Verificar se arquivo .env existe
+ls -la .env
+
+# 3. Carregar variáveis
+source .env
+
+# 4. Verificar se variáveis estão carregadas
+echo "✅ RPC: $SEPOLIA_RPC_URL"
+echo "✅ Private Key: $([ -n "$PRIVATE_KEY" ] && echo "configurada" || echo "❌ VAZIA")"
+echo "✅ Etherscan API: $([ -n "$ETHERSCAN_API_KEY" ] && echo "configurada" || echo "❌ VAZIA")"
+```
+
+**Comando COMPLETO que FUNCIONA:**
+```bash
+source .env && forge script script/TaskManager.s.sol:TaskManagerScript --rpc-url $SEPOLIA_RPC_URL --private-key $PRIVATE_KEY --broadcast --verify --etherscan-api-key $ETHERSCAN_API_KEY -vvvv
+```
 
 **🎯 Próximos passos:**
 - Criar interface front-end
@@ -1862,6 +1955,30 @@ Permitir consulta ao número total de tarefas criadas e ao saldo atual do contra
 ```
 
 **💡 Dica**: Este prompt pode servir como **base** para criar outros contratos similares ou para **estudar** como traduzir requisitos em código Solidity!
+
+---
+
+### 📌 **Atualização: Deploy Corrigido**
+
+**✅ Deploy Funcional**: O comando de deploy foi corrigido e testado com sucesso!
+- **Contrato**: TaskManager deployado em: `0xb17d39826a1b83f7685de1ebc924b3185b677383`
+- **Rede**: Sepolia Testnet
+- **Hash**: `0x317b05ffccb85fad4a670cdee712c2f908322101767e78b4ad809e4b0fe8d10e`
+- **Verificado**: ✅ Código verificado no Etherscan
+
+**🔗 Ver contrato**: [https://sepolia.etherscan.io/address/0xb17d39826a1b83f7685de1ebc924b3185b677383](https://sepolia.etherscan.io/address/0xb17d39826a1b83f7685de1ebc924b3185b677383)
+
+#### 🔑 **LEMBRE-SE: Sempre Carregar Variáveis de Ambiente!**
+
+**⚠️ ERRO MAIS COMUM**: Esquecer de executar `source .env` antes do deploy.
+
+**✅ PROCESSO CORRETO:**
+1. `cd smartcontract` (entrar na pasta do smart contract)
+2. `source .env` (carregar variáveis)
+3. Executar comando de deploy
+4. ✨ Deploy funciona perfeitamente!
+
+**💡 Dica**: Sempre que abrir um novo terminal, execute `source .env` novamente, pois as variáveis só ficam carregadas na sessão atual do terminal.
 
 ---
 

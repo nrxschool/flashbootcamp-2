@@ -25,9 +25,7 @@ export function Web3Provider({ children }: Web3ProviderProps) {
   }))
 
   return (
-    {/* 🔧 WAGMI: Fornece conexão Web3 para todo o app */}
     <WagmiProvider config={config}>
-      {/* 🗄️ QUERY: Gerencia cache e atualizações automáticas */}
       <QueryClientProvider client={queryClient}>
         {children}
       </QueryClientProvider>
