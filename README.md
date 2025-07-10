@@ -1991,7 +1991,8 @@ Permitir consulta ao número total de tarefas criadas e ao saldo atual do contra
 **🔗 O que vamos fazer nesta aula:**
 - Conectar nosso site Next.js com o smart contract deployado
 - Usar **wagmi** e **viem** para fazer essa conexão
-- Criar funções simples para interagir com a blockchain
+- Criar hooks customizados para organizar a lógica Web3
+- Configurar providers e implementar a interface
 - Fazer tudo funcionar **sem complicação**
 
 #### 🧩 **As Peças do Quebra-Cabeça**
@@ -2189,213 +2190,22 @@ npx shadcn@latest add alert
 - **`@tanstack/react-query`**: A "memória inteligente" que guarda dados
 - **`@wagmi/connectors`**: Os "adaptadores" para diferentes carteiras
 
-### 🏗️ **Passo 2: Configuração da Conexão Web3**
+### 🎣 **Passo 2: Criar Hooks Customizados**
 
-Vamos criar o arquivo que **configura toda a conexão** com a blockchain:
+#### **🤔 Por que usar Hooks?**
 
-#### 📁 **Criar `lib/web3.ts`**
+**Analogia**: Hooks são como **"funcionários especializados"** numa empresa:
 
-```typescript
-// lib/web3.ts - Nossa "Central de Conexões"
+- **👔 Gerente de Vendas** (useCreateTask): Só cuida de criar tarefas
+- **📊 Analista de Dados** (useTaskMetrics): Só cuida de calcular estatísticas
+- **🔍 Pesquisador** (useAllUserTasks): Só cuida de buscar dados
+- **🔗 Recepcionista** (useWeb3Status): Só cuida de saber quem está logado
 
-// 📦 Importa as ferramentas necessárias
-import { createConfig, http } from 'wagmi'
-import { sepolia } from 'wagmi/chains'
-import { metaMask, walletConnect } from 'wagmi/connectors'
-
-// 🔑 Configurações (substitua pelos seus valores)
-const projectId = 'SEU_WALLETCONNECT_PROJECT_ID' // De https://cloud.walletconnect.com
-const alchemyApiKey = 'SUA_ALCHEMY_API_KEY'      // De https://alchemy.com
-
-// ⚙️ Configuração principal - nossa "receita de conexão"
-export const config = createConfig({
-  // 🌐 Em qual blockchain vamos trabalhar
-  chains: [sepolia],
-  
-  // 🔌 Quais carteiras podem conectar
-  connectors: [
-    metaMask(),                     // MetaMask (mais popular)
-    walletConnect({ projectId }),   // WalletConnect (carteiras mobile)
-  ],
-  
-  // 🌍 Como conectar na internet da blockchain
-  transports: {
-    [sepolia.id]: http(`https://eth-sepolia.g.alchemy.com/v2/${alchemyApiKey}`)
-  },
-})
-
-// 📍 Endereço do nosso smart contract (copie do deploy)
-export const CONTRACT_ADDRESS = '0xSEU_ENDERECO_DO_CONTRATO_AQUI'
-
-// 📋 ABI - "Manual de instruções" do contrato
-export const CONTRACT_ABI = [
-  // 📝 Função: createTask (criar nova tarefa)
-  {
-    "inputs": [
-      { "internalType": "string", "name": "_title", "type": "string" },
-      { "internalType": "string", "name": "_description", "type": "string" },
-      { "internalType": "uint256", "name": "_deadline", "type": "uint256" }
-    ],
-    "name": "createTask",
-    "outputs": [],
-    "stateMutability": "payable",  // ← Aceita ETH junto
-    "type": "function"
-  },
-  
-  // ✅ Função: completeTask (marcar como concluída)
-  {
-    "inputs": [
-      { "internalType": "uint256", "name": "_taskId", "type": "uint256" }
-    ],
-    "name": "completeTask",
-    "outputs": [],
-    "stateMutability": "nonpayable", // ← Só executa, não recebe ETH
-    "type": "function"
-  },
-  
-  // 👀 Função: getMyTasks (buscar minhas tarefas)
-  {
-    "inputs": [],
-    "name": "getMyTasks",
-    "outputs": [
-      { "internalType": "uint256[]", "name": "", "type": "uint256[]" }
-    ],
-    "stateMutability": "view",  // ← Só lê, não modifica nada
-    "type": "function"
-  },
-  
-  // 🔍 Função: tasks (buscar uma tarefa específica)
-  {
-    "inputs": [
-      { "internalType": "uint256", "name": "", "type": "uint256" }
-    ],
-    "name": "tasks",
-    "outputs": [
-      { "internalType": "uint256", "name": "id", "type": "uint256" },
-      { "internalType": "string", "name": "title", "type": "string" },
-      { "internalType": "string", "name": "description", "type": "string" },
-      { "internalType": "uint256", "name": "createdAt", "type": "uint256" },
-      { "internalType": "uint256", "name": "deadline", "type": "uint256" },
-      { "internalType": "bool", "name": "isCompleted", "type": "bool" },
-      { "internalType": "address", "name": "creator", "type": "address" },
-      { "internalType": "uint256", "name": "stake", "type": "uint256" },
-      { "internalType": "bool", "name": "stakeProcessed", "type": "bool" }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  
-  // 🔢 Função: totalTasks (total de tarefas criadas)
-  {
-    "inputs": [],
-    "name": "totalTasks",
-    "outputs": [
-      { "internalType": "uint256", "name": "", "type": "uint256" }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  }
-] as const
-```
-
-**🤔 O que cada parte faz:**
-
-- **`config`**: A "receita" de como conectar na blockchain
-- **`CONTRACT_ADDRESS`**: O "endereço" onde nosso contrato mora
-- **`CONTRACT_ABI`**: O "manual" com todas as funções disponíveis
-
-### 🎯 **Passo 3: Configurar Provedores no App**
-
-Como seu `layout.tsx` já está configurado, precisamos apenas criar o **Provider Web3** isolado:
-
-#### 📁 **Criar `providers/Web3Provider.tsx`**
-
-```typescript
-// providers/Web3Provider.tsx - Provider Web3 isolado
-
-'use client'
-
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { WagmiProvider } from 'wagmi'
-import { config } from '@/lib/web3'
-import { useState, ReactNode } from 'react'
-
-interface Web3ProviderProps {
-  children: ReactNode
-}
-
-export function Web3Provider({ children }: Web3ProviderProps) {
-  // 🧠 Cria a "memória inteligente" (cache)
-  const [queryClient] = useState(() => new QueryClient({
-    defaultOptions: {
-      queries: {
-        // ⚡ Configurações otimizadas para Web3
-        refetchOnWindowFocus: false,
-        retry: 1,
-        staleTime: 1000 * 60 * 5, // 5 minutos
-      },
-    },
-  }))
-
-  return (
-    {/* 🔧 WAGMI: Fornece conexão Web3 para todo o app */}
-    <WagmiProvider config={config}>
-      {/* 🗄️ QUERY: Gerencia cache e atualizações automáticas */}
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
-    </WagmiProvider>
-  )
-}
-```
-
-#### 📁 **Manter `app/layout.tsx` sem "use client"**
-
-Seu layout atual já está correto! Ele usa o `Web3Provider` que criamos acima:
-
-```typescript
-// app/layout.tsx - Mantém como está (sem 'use client')
-
-import { Web3Provider } from '@/providers/Web3Provider'
-import { Toaster } from '@/components/ui/toaster'
-import type { Metadata } from 'next'
-import './globals.css'
-
-export const metadata: Metadata = {
-  title: 'TaskManager DApp',
-  description: 'Gerencie suas tarefas na blockchain Ethereum (Sepolia)',
-  // ... resto das configurações
-}
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  return (
-    <html lang="pt-BR">
-      <body className="min-h-screen bg-background font-sans antialiased">
-        <Web3Provider>
-          <main className="relative flex min-h-screen flex-col">
-            {children}
-          </main>
-          <Toaster />
-        </Web3Provider>
-      </body>
-    </html>
-  )
-}
-```
-
-**🎯 Vantagens desta estrutura:**
-- ✅ **Layout Server Component**: Pode usar metadata, otimizações SSR
-- ✅ **Provider isolado**: Web3 só carrega onde necessário
-- ✅ **Configuração otimizada**: Cache configurado para blockchain
-- ✅ **Tipos seguros**: TypeScript funcionando perfeitamente
-
-**Analogia**: É como **"ter a fiação elétrica principal"** (layout) e um **"quadro de força especializado"** (Web3Provider) para aparelhos que precisam de energia especial!
-
-### 🎣 **Passo 4: Criar Hooks Customizados**
+**✅ Vantagens dos Hooks:**
+- **Reutilizável**: Usa o mesmo hook em vários componentes
+- **Organizado**: Cada hook tem uma responsabilidade específica
+- **Automático**: Atualiza dados automaticamente quando necessário
+- **Limpo**: Componente fica simples, lógica fica nos hooks
 
 Vamos criar **"assistentes especializados"** para cada tarefa do nosso app:
 
@@ -2531,487 +2341,209 @@ export function useWeb3Status() {
 - **`useCompleteTask`**: "Supervisor" que marca tarefas como concluídas
 - **`useWeb3Status`**: "Recepcionista" que sabe quem está logado
 
-### 🎨 **Passo 5: Adaptar o Frontend Existente para Web3**
+### 🏗️ **Passo 3: Configuração da Conexão Web3**
 
-Como você já tem uma interface bonita funcionando, vamos **integrar Web3 gradualmente** mantendo seu design atual:
+Agora que entendemos os hooks, vamos configurar a **conexão com a blockchain**:
 
-#### 📁 **Atualizar `app/page.tsx` - Integração Completa**
+#### 📁 **Criar `lib/web3.ts`**
 
 ```typescript
-// app/page.tsx - Página principal com integração Web3
+// lib/web3.ts - Nossa "Central de Conexões"
 
-"use client"
+// 📦 Importa as ferramentas necessárias
+import { createConfig, http } from 'wagmi'
+import { sepolia } from 'wagmi/chains'
+import { metaMask, walletConnect } from 'wagmi/connectors'
 
-import type React from "react"
-import { useState, useMemo, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { AlertCircle, CheckCircle2, ListTodo, Loader, Coins, PlusCircle, CheckSquare, Wallet } from "lucide-react"
+// 🔑 Configurações (substitua pelos seus valores)
+const projectId = 'SEU_WALLETCONNECT_PROJECT_ID' // De https://cloud.walletconnect.com
+const alchemyApiKey = 'SUA_ALCHEMY_API_KEY'      // De https://alchemy.com
 
-// 🔧 Imports Web3
-import { useConnect, useDisconnect, useAccount, useBalance } from 'wagmi'
-import { useMyTasks, useTask, useCompleteTask, useCreateTask, useWeb3Status } from '@/hooks/useTaskManager'
-import { CreateTaskModal } from '@/components/CreateTaskModal'
-
-// Tipagem adaptada para Web3
-type Task = {
-  id: number
-  name: string
-  description: string
-  status: "Pendente" | "Concluído"
-  creationDate: string
-  completionDate: string | null
-  wei: number
-  deadline?: string
-  isOverdue?: boolean
-}
-
-export default function Web3TodoPage() {
-  const [showCreateModal, setShowCreateModal] = useState(false)
+// ⚙️ Configuração principal - nossa "receita de conexão"
+export const config = createConfig({
+  // 🌐 Em qual blockchain vamos trabalhar
+  chains: [sepolia],
   
-  // 🔗 Hooks Web3
-  const { connectors, connect } = useConnect()
-  const { disconnect } = useDisconnect()
-  const { isConnected, shortAddress, address } = useWeb3Status()
-  const { data: taskIds, isLoading: loadingTasks } = useMyTasks()
-  const { data: balance } = useBalance({ address })
+  // 🔌 Quais carteiras podem conectar
+  connectors: [
+    metaMask(),                     // MetaMask (mais popular)
+    walletConnect({ projectId }),   // WalletConnect (carteiras mobile)
+  ],
+  
+  // 🌍 Como conectar na internet da blockchain
+  transports: {
+    [sepolia.id]: http(`https://eth-sepolia.g.alchemy.com/v2/${alchemyApiKey}`)
+  },
+})
 
-  // 🎯 Converter dados da blockchain para formato do componente
-  const tasks = useMemo(() => {
-    if (!taskIds || !isConnected) return []
-    
-    // Em uma implementação real, você buscaria cada tarefa individualmente
-    // Por simplicidade, vamos simular algumas tarefas quando conectado
-    return [
-      {
-        id: 1,
-        name: "Estudar Solidity",
-        description: "Completar curso de desenvolvimento de smart contracts",
-        status: "Pendente" as const,
-        creationDate: "2025-01-15",
-        completionDate: null,
-        wei: 1000000000000000, // 0.001 ETH em wei
-        deadline: "2025-01-25",
-        isOverdue: false
-      },
-      {
-        id: 2,
-        name: "Deploy na Sepolia",
-        description: "Fazer deploy do contrato na rede de teste",
-        status: "Concluído" as const,
-        creationDate: "2025-01-10",
-        completionDate: "2025-01-12",
-        wei: 2000000000000000, // 0.002 ETH em wei
-      }
-    ]
-  }, [taskIds, isConnected])
+// 📍 Endereço do nosso smart contract (copie do deploy)
+export const CONTRACT_ADDRESS = '0xSEU_ENDERECO_DO_CONTRATO_AQUI'
 
-  const handleConnectWallet = () => {
-    if (isConnected) {
-      disconnect()
-    } else {
-      // Conecta com o primeiro conector disponível (MetaMask)
-      const metamask = connectors.find(c => c.name === 'MetaMask')
-      if (metamask) {
-        connect({ connector: metamask })
-      }
-    }
+// 📋 ABI - "Manual de instruções" do contrato
+export const CONTRACT_ABI = [
+  // 📝 Função: createTask (criar nova tarefa)
+  {
+    "inputs": [
+      { "internalType": "string", "name": "_title", "type": "string" },
+      { "internalType": "string", "name": "_description", "type": "string" },
+      { "internalType": "uint256", "name": "_deadline", "type": "uint256" }
+    ],
+    "name": "createTask",
+    "outputs": [],
+    "stateMutability": "payable",  // ← Aceita ETH junto
+    "type": "function"
+  },
+  
+  // ✅ Função: completeTask (marcar como concluída)
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "_taskId", "type": "uint256" }
+    ],
+    "name": "completeTask",
+    "outputs": [],
+    "stateMutability": "nonpayable", // ← Só executa, não recebe ETH
+    "type": "function"
+  },
+  
+  // 👀 Função: getMyTasks (buscar minhas tarefas)
+  {
+    "inputs": [],
+    "name": "getMyTasks",
+    "outputs": [
+      { "internalType": "uint256[]", "name": "", "type": "uint256[]" }
+    ],
+    "stateMutability": "view",  // ← Só lê, não modifica nada
+    "type": "function"
+  },
+  
+  // 🔍 Função: tasks (buscar uma tarefa específica)
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "", "type": "uint256" }
+    ],
+    "name": "tasks",
+    "outputs": [
+      { "internalType": "uint256", "name": "id", "type": "uint256" },
+      { "internalType": "string", "name": "title", "type": "string" },
+      { "internalType": "string", "name": "description", "type": "string" },
+      { "internalType": "uint256", "name": "createdAt", "type": "uint256" },
+      { "internalType": "uint256", "name": "deadline", "type": "uint256" },
+      { "internalType": "bool", "name": "isCompleted", "type": "bool" },
+      { "internalType": "address", "name": "creator", "type": "address" },
+      { "internalType": "uint256", "name": "stake", "type": "uint256" },
+      { "internalType": "bool", "name": "stakeProcessed", "type": "bool" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  
+  // 🔢 Função: totalTasks (total de tarefas criadas)
+  {
+    "inputs": [],
+    "name": "totalTasks",
+    "outputs": [
+      { "internalType": "uint256", "name": "", "type": "uint256" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
   }
-
-  const metrics = useMemo(() => {
-    const total = tasks.length
-    const concluidas = tasks.filter((t) => t.status === "Concluído").length
-    const pendentes = total - concluidas
-    const weiInStake = tasks.filter((t) => t.status === "Pendente").reduce((sum, task) => sum + task.wei, 0)
-    return { total, concluidas, pendentes, weiInStake }
-  }, [tasks])
-
-  return (
-    <TooltipProvider>
-      <div className="min-h-screen bg-gray-50 text-gray-900">
-        <main className="container mx-auto p-4 sm:p-6 lg:p-8">
-          {/* Cabeçalho */}
-          <header className="mb-8">
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-              <h1 className="text-3xl font-bold text-gray-800">WEB3 TODO</h1>
-              <div className="flex items-center gap-2">
-                {isConnected && (
-                  <div className="flex flex-col items-end text-sm">
-                    <span className="text-green-600 font-medium">{shortAddress}</span>
-                    <span className="text-gray-500">
-                      {balance ? `${Number(balance.formatted).toFixed(4)} ETH` : '0 ETH'}
-                    </span>
-                  </div>
-                )}
-                <Button
-                  onClick={handleConnectWallet}
-                  className={`transition-all duration-300 ${
-                    isConnected ? "bg-green-600 hover:bg-green-700" : "bg-violet-600 hover:bg-violet-700"
-                  }`}
-                >
-                  <Wallet className="mr-2 h-4 w-4" />
-                  {isConnected ? "Carteira Conectada" : "Conectar Carteira"}
-                </Button>
-              </div>
-            </div>
-            {!isConnected && (
-              <Alert
-                variant="destructive"
-                className="mt-4 border-yellow-500/50 text-yellow-700 [&>svg]:text-yellow-700"
-              >
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Atenção</AlertTitle>
-                <AlertDescription>Conecte sua carteira para gerenciar suas tarefas na blockchain.</AlertDescription>
-              </Alert>
-            )}
-          </header>
-
-          {/* Seção de Métricas */}
-          <section className="mb-10">
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              <MetricCard
-                title="Total de Tarefas"
-                value={metrics.total}
-                icon={<ListTodo className="h-6 w-6 text-violet-500" />}
-              />
-              <MetricCard
-                title="Tarefas Concluídas"
-                value={metrics.concluidas}
-                icon={<CheckCircle2 className="h-6 w-6 text-cyan-500" />}
-              />
-              <MetricCard
-                title="Tarefas Pendentes"
-                value={metrics.pendentes}
-                icon={<Loader className="h-6 w-6 text-yellow-500" />}
-              />
-              <MetricCard
-                title="ETH em Stake"
-                value={`${(metrics.weiInStake / 1e18).toFixed(3)} ETH`}
-                icon={<Coins className="h-6 w-6 text-indigo-500" />}
-              />
-            </div>
-          </section>
-
-          {/* Seção de Tarefas */}
-          <section>
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-semibold text-gray-800">Tarefas</h2>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="inline-block">
-                    <Button 
-                      disabled={!isConnected} 
-                      className="bg-violet-600 hover:bg-violet-700 disabled:opacity-50"
-                      onClick={() => setShowCreateModal(true)}
-                    >
-                      <PlusCircle className="mr-2 h-4 w-4" />
-                      Nova Tarefa
-                    </Button>
-                  </div>
-                </TooltipTrigger>
-                {!isConnected && (
-                  <TooltipContent>
-                    <p>Conecte sua carteira para criar tarefas.</p>
-                  </TooltipContent>
-                )}
-              </Tooltip>
-            </div>
-            
-            <div className="space-y-4">
-              {loadingTasks && isConnected ? (
-                <div className="text-center p-8">
-                  <Loader className="animate-spin h-8 w-8 mx-auto mb-4" />
-                  <p>Carregando tarefas da blockchain...</p>
-                </div>
-              ) : tasks.length === 0 && isConnected ? (
-                <div className="text-center p-8">
-                  <p className="text-gray-500">Você ainda não tem tarefas. Crie sua primeira!</p>
-                </div>
-              ) : (
-                tasks.map((task) => (
-                  <Web3TaskCard 
-                    key={task.id} 
-                    task={task} 
-                    isConnected={isConnected} 
-                  />
-                ))
-              )}
-              
-              {!isConnected && (
-                <div className="text-center p-8">
-                  <AlertCircle className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                  <p className="text-gray-500">Conecte sua carteira para ver suas tarefas</p>
-                </div>
-              )}
-            </div>
-          </section>
-        </main>
-      </div>
-      
-      {/* Modal de Criar Tarefa */}
-      <CreateTaskModal 
-        open={showCreateModal} 
-        onClose={() => setShowCreateModal(false)} 
-      />
-    </TooltipProvider>
-  )
-}
-
-// Componente para os cards de métrica (mantido igual)
-function MetricCard({ title, value, icon }: { title: string; value: string | number; icon: React.ReactNode }) {
-  return (
-    <Card className="transition-shadow duration-300 hover:shadow-lg">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-gray-500">{title}</CardTitle>
-        {icon}
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-      </CardContent>
-    </Card>
-  )
-}
-
-// Componente para os cards de tarefa Web3
-function Web3TaskCard({
-  task,
-  isConnected,
-}: { 
-  task: Task
-  isConnected: boolean 
-}) {
-  const { completeTask, isPending } = useCompleteTask()
-  const isCompleted = task.status === "Concluído"
-  
-  const handleComplete = async () => {
-    if (!isConnected) return
-    
-    try {
-      await completeTask(task.id)
-      // A UI será atualizada automaticamente pelo wagmi
-    } catch (error) {
-      console.error('Erro ao completar tarefa:', error)
-    }
-  }
-  
-  return (
-    <Card className={`transition-all duration-300 ${
-      isCompleted ? "bg-gray-100/80 border-gray-200" : 
-      task.isOverdue ? "bg-red-50/80 border-red-200" : "bg-white"
-    }`}>
-      <CardContent className="p-4 sm:p-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <h3 className={`text-lg font-semibold ${isCompleted ? "text-gray-500 line-through" : "text-gray-900"}`}>
-                {task.name}
-              </h3>
-              <Badge
-                variant={isCompleted ? "default" : task.isOverdue ? "destructive" : "secondary"}
-                className={`text-xs font-medium ${
-                  isCompleted
-                    ? "bg-cyan-100 text-cyan-800 border-cyan-200"
-                    : task.isOverdue 
-                      ? "bg-red-100 text-red-800 border-red-200"
-                      : "bg-yellow-100 text-yellow-800 border-yellow-200"
-                }`}
-              >
-                {isCompleted ? "Concluído" : task.isOverdue ? "Atrasada" : "Pendente"}
-              </Badge>
-            </div>
-            <p className={`text-sm text-gray-600 ${isCompleted ? "text-gray-500" : ""}`}>
-              {task.description}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
-              <span>Criado em: {new Date(task.creationDate).toLocaleDateString("pt-BR")}</span>
-              {task.completionDate && (
-                <span>Concluído em: {new Date(task.completionDate).toLocaleDateString("pt-BR")}</span>
-              )}
-              {task.deadline && (
-                <span>Prazo: {new Date(task.deadline).toLocaleDateString("pt-BR")}</span>
-              )}
-              <span className="flex items-center gap-1">
-                <Coins className="h-3 w-3" /> 
-                {(task.wei / 1e18).toFixed(3)} ETH
-              </span>
-            </div>
-          </div>
-          {!isCompleted && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="inline-block">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleComplete}
-                    disabled={!isConnected || isPending}
-                    aria-label="Concluir Tarefa"
-                    className="border-violet-300 text-violet-600 hover:bg-violet-50 hover:text-violet-700 disabled:opacity-50"
-                  >
-                    {isPending ? (
-                      <Loader className="h-5 w-5 animate-spin" />
-                    ) : (
-                      <CheckSquare className="h-5 w-5" />
-                    )}
-                  </Button>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>
-                  {!isConnected 
-                    ? "Conecte a carteira para concluir" 
-                    : isPending 
-                      ? "Processando transação..."
-                      : "Concluir Tarefa"
-                  }
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
+] as const
 ```
 
-#### 📁 **Criar `components/CreateTaskModal.tsx`**
+**🤔 O que cada parte faz:**
+
+- **`config`**: A "receita" de como conectar na blockchain
+- **`CONTRACT_ADDRESS`**: O "endereço" onde nosso contrato mora
+- **`CONTRACT_ABI`**: O "manual" com todas as funções disponíveis
+
+### 🎯 **Passo 4: Configurar Provedores no App**
+
+#### 📁 **Criar `providers/Web3Provider.tsx`**
 
 ```typescript
-// components/CreateTaskModal.tsx - Modal para criar tarefas
+// providers/Web3Provider.tsx - Provider Web3 isolado
 
 'use client'
 
-import { useState } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
-import { Loader } from 'lucide-react'
-import { useCreateTask } from '@/hooks/useTaskManager'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { WagmiProvider } from 'wagmi'
+import { config } from '@/lib/web3'
+import { useState, ReactNode } from 'react'
 
-interface CreateTaskModalProps {
-  open: boolean
-  onClose: () => void
+interface Web3ProviderProps {
+  children: ReactNode
 }
 
-export function CreateTaskModal({ open, onClose }: CreateTaskModalProps) {
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [deadline, setDeadline] = useState('')
-  const [stakeAmount, setStakeAmount] = useState('0.001')
-  
-  const { createTask, isPending } = useCreateTask()
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    try {
-      const deadlineDate = new Date(deadline)
-      await createTask(title, description, deadlineDate, stakeAmount)
-      
-      // Limpa formulário e fecha modal
-      setTitle('')
-      setDescription('')
-      setDeadline('')
-      setStakeAmount('0.001')
-      onClose()
-      
-    } catch (error) {
-      console.error('Erro ao criar tarefa:', error)
-    }
-  }
-
-  // Gera data mínima (hoje + 1 hora)
-  const minDateTime = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16)
+export function Web3Provider({ children }: Web3ProviderProps) {
+  // 🧠 Cria a "memória inteligente" (cache)
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: {
+      queries: {
+        // ⚡ Configurações otimizadas para Web3
+        refetchOnWindowFocus: false,
+        retry: 1,
+        staleTime: 1000 * 60 * 5, // 5 minutos
+      },
+    },
+  }))
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
-          <DialogTitle>🎯 Nova Tarefa na Blockchain</DialogTitle>
-        </DialogHeader>
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="title">Título da Tarefa</Label>
-            <Input
-              id="title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Ex: Estudar Solidity"
-              required
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="description">Descrição</Label>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Descreva o que precisa ser feito..."
-              rows={3}
-              required
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="deadline">Prazo Final</Label>
-            <Input
-              id="deadline"
-              type="datetime-local"
-              value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
-              min={minDateTime}
-              required
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="stake">Valor do Stake (ETH)</Label>
-            <Input
-              id="stake"
-              type="number"
-              step="0.001"
-              min="0.001"
-              value={stakeAmount}
-              onChange={(e) => setStakeAmount(e.target.value)}
-              placeholder="0.001"
-              required
-            />
-            <p className="text-xs text-gray-500">
-              💡 Mínimo: 0.001 ETH • Você recupera se completar no prazo!
-            </p>
-          </div>
-          
-          <div className="flex justify-end gap-3 pt-4">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={isPending} className="bg-violet-600 hover:bg-violet-700">
-              {isPending ? (
-                <>
-                  <Loader className="mr-2 h-4 w-4 animate-spin" />
-                  Criando...
-                </>
-              ) : (
-                'Criar Tarefa'
-              )}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+    {/* 🔧 WAGMI: Fornece conexão Web3 para todo o app */}
+    <WagmiProvider config={config}>
+      {/* 🗄️ QUERY: Gerencia cache e atualizações automáticas */}
+      <QueryClientProvider client={queryClient}>
+        {children}
+      </QueryClientProvider>
+    </WagmiProvider>
   )
 }
 ```
 
-### 🎨 **Passo 6: Adaptar o Frontend Existente para Web3**
+#### 📁 **Atualizar `app/layout.tsx`**
+
+```typescript
+// app/layout.tsx - Mantém como está (sem 'use client')
+
+import { Web3Provider } from '@/providers/Web3Provider'
+import { Toaster } from '@/components/ui/toaster'
+import type { Metadata } from 'next'
+import './globals.css'
+
+export const metadata: Metadata = {
+  title: 'TaskManager DApp',
+  description: 'Gerencie suas tarefas na blockchain Ethereum (Sepolia)',
+  // ... resto das configurações
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="pt-BR">
+      <body className="min-h-screen bg-background font-sans antialiased">
+        <Web3Provider>
+          <main className="relative flex min-h-screen flex-col">
+            {children}
+          </main>
+          <Toaster />
+        </Web3Provider>
+      </body>
+    </html>
+  )
+}
+```
+
+**🎯 Vantagens desta estrutura:**
+- ✅ **Layout Server Component**: Pode usar metadata, otimizações SSR
+- ✅ **Provider isolado**: Web3 só carrega onde necessário
+- ✅ **Configuração otimizada**: Cache configurado para blockchain
+- ✅ **Tipos seguros**: TypeScript funcionando perfeitamente
+
+**Analogia**: É como **"ter a fiação elétrica principal"** (layout) e um **"quadro de força especializado"** (Web3Provider) para aparelhos que precisam de energia especial!
+
+### 💻 **Passo 5: Implementação da Interface Principal**
 
 Como você já tem uma interface bonita funcionando, vamos **integrar Web3 gradualmente** mantendo seu design atual:
 
@@ -3023,75 +2555,58 @@ Como você já tem uma interface bonita funcionando, vamos **integrar Web3 gradu
 "use client"
 
 import type React from "react"
-import { useState, useMemo } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { AlertCircle, CheckCircle2, ListTodo, Loader, Coins, PlusCircle, CheckSquare, Wallet } from "lucide-react"
+import { AlertCircle, CheckCircle2, ListTodo, Loader, Coins, PlusCircle, CheckSquare, Wallet, RefreshCw } from "lucide-react"
 
-// 🔧 Imports Web3
-import { useConnect, useDisconnect, useAccount, useBalance } from 'wagmi'
-import { useMyTasks, useCompleteTask, useWeb3Status } from '@/hooks/useTaskManager'
+// 🔧 Imports Web3 SIMPLIFICADOS
+import { useConnect, useDisconnect, useChainId } from 'wagmi'
+import { useWeb3Status, useContractBalance, useTaskMetrics } from '@/hooks/useTaskManager'
 import { CreateTaskModal } from '@/components/CreateTaskModal'
-
-// Tipagem adaptada para Web3
-type Task = {
-  id: number
-  name: string
-  description: string
-  status: "Pendente" | "Concluído"
-  creationDate: string
-  completionDate: string | null
-  wei: number
-  deadline?: string
-  isOverdue?: boolean
-}
+import { TaskItem } from '@/components/TaskItem'
+import { sepolia } from 'wagmi/chains'
 
 export default function Web3TodoPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   
-  // 🔗 Hooks Web3
+  // 🔗 Hooks Web3 ULTRA-SIMPLIFICADOS
   const { connectors, connect } = useConnect()
   const { disconnect } = useDisconnect()
-  const { isConnected, shortAddress, address } = useWeb3Status()
-  const { data: taskIds, isLoading: loadingTasks } = useMyTasks()
-  const { data: balance } = useBalance({ address })
-
-  // 🎯 Converter dados da blockchain para formato do componente
-  const tasks = useMemo(() => {
-    if (!taskIds || !isConnected) return []
-    
-    // 🔄 IMPLEMENTAÇÃO REAL: Buscar cada tarefa individualmente
-    // Por enquanto retorna array vazio, mas cada taskId seria buscado via useTask()
-    return taskIds.map(id => {
-      // Aqui você buscaria cada tarefa individualmente:
-      // const { data: taskData } = useTask(Number(id))
-      // return taskData ? formatTaskForUI(taskData) : null
-      return null
-    }).filter(Boolean)
-  }, [taskIds, isConnected])
+  const { isConnected, shortAddress } = useWeb3Status()
+  const { refetchBalance } = useContractBalance()
+  const chainId = useChainId()
+  
+  // 🚀 UM ÚNICO HOOK para tudo: métricas + tarefas + dados
+  const {
+    total,
+    concluidas, 
+    pendentes,
+    weiInStake,
+    tasks,
+    isLoading: loadingTasks,
+    refetch: refetchTasks
+  } = useTaskMetrics()
+  
+  // Verificar se está na rede correta
+  const isCorrectNetwork = chainId === sepolia.id
+  const networkName = chainId === sepolia.id ? 'Sepolia' : `Rede ${chainId}`
 
   const handleConnectWallet = () => {
     if (isConnected) {
       disconnect()
     } else {
-      // Conecta com o primeiro conector disponível (MetaMask)
       const metamask = connectors.find(c => c.name === 'MetaMask')
-      if (metamask) {
-        connect({ connector: metamask })
-      }
+      if (metamask) connect({ connector: metamask })
     }
   }
 
-  const metrics = useMemo(() => {
-    const total = tasks.length
-    const concluidas = tasks.filter((t) => t.status === "Concluído").length
-    const pendentes = total - concluidas
-    const weiInStake = tasks.filter((t) => t.status === "Pendente").reduce((sum, task) => sum + task.wei, 0)
-    return { total, concluidas, pendentes, weiInStake }
-  }, [tasks])
+  const handleRefresh = async () => {
+    await Promise.all([refetchTasks(), refetchBalance()])
+  }
 
   return (
     <TooltipProvider>
@@ -3105,9 +2620,12 @@ export default function Web3TodoPage() {
                 {isConnected && (
                   <div className="flex flex-col items-end text-sm">
                     <span className="text-green-600 font-medium">{shortAddress}</span>
-                    <span className="text-gray-500">
-                      {balance ? `${Number(balance.formatted).toFixed(4)} ETH` : '0 ETH'}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <div className={`w-2 h-2 rounded-full ${isCorrectNetwork ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                      <span className={`text-xs ${isCorrectNetwork ? 'text-green-600' : 'text-red-600'}`}>
+                        {networkName}
+                      </span>
+                    </div>
                   </div>
                 )}
                 <Button
@@ -3131,6 +2649,19 @@ export default function Web3TodoPage() {
                 <AlertDescription>Conecte sua carteira para gerenciar suas tarefas na blockchain.</AlertDescription>
               </Alert>
             )}
+            {isConnected && !isCorrectNetwork && (
+              <Alert
+                variant="destructive"
+                className="mt-4 border-red-500/50 text-red-700 [&>svg]:text-red-700"
+              >
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Rede Incorreta</AlertTitle>
+                <AlertDescription>
+                  Você está conectado à rede {networkName}. Por favor, mude para a rede Sepolia para usar este DApp.
+                </AlertDescription>
+              </Alert>
+            )}
+
           </header>
 
           {/* Seção de Métricas */}
@@ -3138,23 +2669,27 @@ export default function Web3TodoPage() {
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
               <MetricCard
                 title="Total de Tarefas"
-                value={metrics.total}
+                value={total}
                 icon={<ListTodo className="h-6 w-6 text-violet-500" />}
+                tooltip="Número total de tarefas criadas"
               />
               <MetricCard
                 title="Tarefas Concluídas"
-                value={metrics.concluidas}
+                value={concluidas}
                 icon={<CheckCircle2 className="h-6 w-6 text-cyan-500" />}
+                tooltip="Tarefas finalizadas no prazo - stake devolvido"
               />
               <MetricCard
                 title="Tarefas Pendentes"
-                value={metrics.pendentes}
+                value={pendentes}
                 icon={<Loader className="h-6 w-6 text-yellow-500" />}
+                tooltip="Tarefas ainda não concluídas"
               />
               <MetricCard
                 title="ETH em Stake"
-                value={`${(metrics.weiInStake / 1e18).toFixed(3)} ETH`}
+                value={`${weiInStake.toFixed(6)} ETH`}
                 icon={<Coins className="h-6 w-6 text-indigo-500" />}
+                tooltip="Valor total apostado em tarefas pendentes"
               />
             </div>
           </section>
@@ -3163,25 +2698,44 @@ export default function Web3TodoPage() {
           <section>
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-semibold text-gray-800">Tarefas</h2>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="inline-block">
+              <div className="flex gap-2">
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <Button 
-                      disabled={!isConnected} 
-                      className="bg-violet-600 hover:bg-violet-700 disabled:opacity-50"
-                      onClick={() => setShowCreateModal(true)}
+                      disabled={!isConnected || loadingTasks} 
+                      variant="outline"
+                      onClick={handleRefresh}
+                      className="border-violet-300 text-violet-600 hover:bg-violet-50"
                     >
-                      <PlusCircle className="mr-2 h-4 w-4" />
-                      Nova Tarefa
+                      <RefreshCw className={`mr-2 h-4 w-4 ${loadingTasks ? 'animate-spin' : ''}`} />
+                      Atualizar
                     </Button>
-                  </div>
-                </TooltipTrigger>
-                {!isConnected && (
+                  </TooltipTrigger>
                   <TooltipContent>
-                    <p>Conecte sua carteira para criar tarefas.</p>
+                    <p>{!isConnected ? "Conecte sua carteira" : "Atualizar lista de tarefas"}</p>
                   </TooltipContent>
-                )}
-              </Tooltip>
+                </Tooltip>
+                
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="inline-block">
+                      <Button 
+                        disabled={!isConnected} 
+                        className="bg-violet-600 hover:bg-violet-700 disabled:opacity-50"
+                        onClick={() => setShowCreateModal(true)}
+                      >
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Nova Tarefa
+                      </Button>
+                    </div>
+                  </TooltipTrigger>
+                  {!isConnected && (
+                    <TooltipContent>
+                      <p>Conecte sua carteira para criar tarefas.</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </div>
             </div>
             
             <div className="space-y-4">
@@ -3190,19 +2744,20 @@ export default function Web3TodoPage() {
                   <Loader className="animate-spin h-8 w-8 mx-auto mb-4" />
                   <p>Carregando tarefas da blockchain...</p>
                 </div>
-              ) : tasks.length === 0 && isConnected ? (
+              ) : (!tasks || tasks.length === 0) && isConnected ? (
                 <div className="text-center p-8">
                   <p className="text-gray-500">Você ainda não tem tarefas. Crie sua primeira!</p>
                 </div>
-              ) : (
-                tasks.map((task) => (
-                  <Web3TaskCard 
-                    key={task.id} 
-                    task={task} 
-                    isConnected={isConnected} 
+              ) : isConnected && tasks ? (
+                tasks.map((task: any) => (
+                  <TaskItem 
+                    key={Number(task.id)} 
+                    task={task}
+                    isConnected={isConnected}
+                    onTaskUpdate={refetchTasks}
                   />
                 ))
-              )}
+              ) : null}
               
               {!isConnected && (
                 <div className="text-center p-8">
@@ -3224,10 +2779,20 @@ export default function Web3TodoPage() {
   )
 }
 
-// Componente para os cards de métrica (mantido igual)
-function MetricCard({ title, value, icon }: { title: string; value: string | number; icon: React.ReactNode }) {
-  return (
-    <Card className="transition-shadow duration-300 hover:shadow-lg">
+// Componente para os cards de métrica
+function MetricCard({ 
+  title, 
+  value, 
+  icon, 
+  tooltip 
+}: { 
+  title: string; 
+  value: string | number; 
+  icon: React.ReactNode;
+  tooltip?: string;
+}) {
+  const content = (
+    <Card className="transition-shadow duration-300 hover:shadow-lg cursor-pointer">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-gray-500">{title}</CardTitle>
         {icon}
@@ -3237,108 +2802,21 @@ function MetricCard({ title, value, icon }: { title: string; value: string | num
       </CardContent>
     </Card>
   )
-}
 
-// Componente para os cards de tarefa Web3
-function Web3TaskCard({
-  task,
-  isConnected,
-}: { 
-  task: Task
-  isConnected: boolean 
-}) {
-  const { completeTask, isPending } = useCompleteTask()
-  const isCompleted = task.status === "Concluído"
-  
-  const handleComplete = async () => {
-    if (!isConnected) return
-    
-    try {
-      await completeTask(task.id)
-      // A UI será atualizada automaticamente pelo wagmi
-    } catch (error) {
-      console.error('Erro ao completar tarefa:', error)
-    }
+  if (tooltip) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {content}
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{tooltip}</p>
+        </TooltipContent>
+      </Tooltip>
+    )
   }
-  
-  return (
-    <Card className={`transition-all duration-300 ${
-      isCompleted ? "bg-gray-100/80 border-gray-200" : 
-      task.isOverdue ? "bg-red-50/80 border-red-200" : "bg-white"
-    }`}>
-      <CardContent className="p-4 sm:p-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <h3 className={`text-lg font-semibold ${isCompleted ? "text-gray-500 line-through" : "text-gray-900"}`}>
-                {task.name}
-              </h3>
-              <Badge
-                variant={isCompleted ? "default" : task.isOverdue ? "destructive" : "secondary"}
-                className={`text-xs font-medium ${
-                  isCompleted
-                    ? "bg-cyan-100 text-cyan-800 border-cyan-200"
-                    : task.isOverdue 
-                      ? "bg-red-100 text-red-800 border-red-200"
-                      : "bg-yellow-100 text-yellow-800 border-yellow-200"
-                }`}
-              >
-                {isCompleted ? "Concluído" : task.isOverdue ? "Atrasada" : "Pendente"}
-              </Badge>
-            </div>
-            <p className={`text-sm text-gray-600 ${isCompleted ? "text-gray-500" : ""}`}>
-              {task.description}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
-              <span>Criado em: {new Date(task.creationDate).toLocaleDateString("pt-BR")}</span>
-              {task.completionDate && (
-                <span>Concluído em: {new Date(task.completionDate).toLocaleDateString("pt-BR")}</span>
-              )}
-              {task.deadline && (
-                <span>Prazo: {new Date(task.deadline).toLocaleDateString("pt-BR")}</span>
-              )}
-              <span className="flex items-center gap-1">
-                <Coins className="h-3 w-3" /> 
-                {(task.wei / 1e18).toFixed(3)} ETH
-              </span>
-            </div>
-          </div>
-          {!isCompleted && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="inline-block">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleComplete}
-                    disabled={!isConnected || isPending}
-                    aria-label="Concluir Tarefa"
-                    className="border-violet-300 text-violet-600 hover:bg-violet-50 hover:text-violet-700 disabled:opacity-50"
-                  >
-                    {isPending ? (
-                      <Loader className="h-5 w-5 animate-spin" />
-                    ) : (
-                      <CheckSquare className="h-5 w-5" />
-                    )}
-                  </Button>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>
-                  {!isConnected 
-                    ? "Conecte a carteira para concluir" 
-                    : isPending 
-                      ? "Processando transação..."
-                      : "Concluir Tarefa"
-                  }
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  )
+
+  return content
 }
 ```
 
@@ -3540,105 +3018,317 @@ console.log('Loading:', isLoading)
 console.log('Erro:', error)
 ```
 
-### 🎯 **Resumo Final: O que Conquistamos**
+## 🔗 **Passo a Passo: Integrando Frontend com Smart Contract**
 
-**✅ Sistema Completo Funcionando:**
+Agora que seu contrato está deployado, vamos conectar o frontend com a blockchain. Siga esta sequência **exata**:
 
-1. **🔌 Conexão**: MetaMask conecta no nosso site
-2. **📝 Criação**: Usuário cria tarefas que vão para blockchain
-3. **📊 Visualização**: Dados atualizados em tempo real
-4. **✅ Interação**: Completar tarefas com transações reais
-5. **💰 Stakes**: Sistema financeiro com ETH real (testnet)
+### 📋 **Sequência de Integração (IMPORTANTE: Siga esta ordem!)**
 
-**🧩 Arquitetura Final:**
+**1. 📝 Copiar dados do contrato deployado**
+**2. ⚙️ Configurar arquivo web3.ts**  
+**3. 🎣 Criar hooks customizados**
+**4. 💻 Atualizar página principal**
+**5. 🧪 Testar integração**
 
+---
+
+### 🎯 **Passo 1: Copiando ABI e Endereço do Contrato**
+
+#### **📋 O que é ABI e por que precisamos?**
+
+**Analogia**: ABI é como um **"cardápio de restaurante"** que lista todos os pratos (funções) disponíveis e seus ingredientes (parâmetros).
+
+- **🤔 Sem ABI**: É como tentar pedir comida sem ver o cardápio - você não sabe o que está disponível
+- **✅ Com ABI**: Você sabe exatamente quais funções pode chamar e como chamar
+
+#### **📁 1.1 Obter ABI do Contrato Compilado**
+
+**Onde encontrar**: Após compilar com Foundry, o ABI fica em:
 ```
-👤 USUÁRIO
-    ↓ clica "Criar Tarefa"
-💻 COMPONENTE CreateTask
-    ↓ chama createTask()
-🎣 HOOK useCreateTask  
-    ↓ usa writeContract()
-⚡ VIEM
-    ↓ traduz para blockchain
-🦊 METAMASK
-    ↓ usuário assina transação
-🌐 BLOCKCHAIN
-    ↓ executa createTask()
-📡 WAGMI
-    ↓ detecta mudança automática
-🔄 CACHE
-    ↓ atualiza dados
-💻 COMPONENTE TaskList
-    ↓ mostra nova tarefa
-👤 USUÁRIO
-    ↓ vê atualização em tempo real! ✨
+smartcontract/out/TaskManager.sol/TaskManager.json
 ```
 
-**🚀 Seu app agora é um DApp completo!**
+**📋 Como extrair o ABI:**
 
-- ✅ **D**ecentralized: Roda na blockchain
-- ✅ **A**pplication: Interface bonita e funcional  
-- ✅ **P**rotocol: Smart contract com regras automáticas
+1. **Abra o arquivo**:
+```bash
+cd smartcontract
+cat out/TaskManager.sol/TaskManager.json
+```
 
-### 🚀 **Passo 8: Implementação Completa com Dados Reais**
+2. **Procure pela seção "abi"** (é um array gigante):
+```json
+{
+  "abi": [
+    {
+      "inputs": [...],
+      "name": "createTask",
+      "outputs": [...],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    // ... muitas outras funções
+  ]
+}
+```
 
-Por enquanto estamos usando dados simulados. Para buscar dados reais da blockchain, atualize os hooks:
+3. **Copie APENAS o array da seção "abi"** (tudo entre `"abi": [` e `]`)
 
-#### 📁 **Atualizar `hooks/useTaskManager.ts` para dados reais:**
+#### **📍 1.2 Obter Endereço do Contrato**
+
+**De onde vem**: Quando você fez o deploy, apareceu algo como:
+```
+TaskManager deployed at: 0xb17d39826a1b83f7685de1ebc924b3185b677383
+```
+
+**📋 Como confirmar se está correto:**
+- Acesse: https://sepolia.etherscan.io/address/SEU_ENDERECO
+- Se mostrar seu contrato = está certo ✅
+
+---
+
+### ⚙️ **Passo 2: Configurando `lib/web3.ts`**
+
+Este arquivo é a **"central de conexão"** do seu DApp:
 
 ```typescript
-// hooks/useTaskManager.ts - Versão com dados reais da blockchain
+// lib/web3.ts - "Central de Conexão" do seu DApp
 
-import { useReadContract, useWriteContract, useAccount } from 'wagmi'
-import { CONTRACT_ADDRESS, CONTRACT_ABI } from '@/lib/web3'
-import { parseEther } from 'viem'
+import { createConfig, http } from 'wagmi'
+import { sepolia } from 'wagmi/chains'
+import { metaMask } from 'wagmi/connectors'
 
-// 🎣 Hook: Buscar minhas tarefas (dados reais)
-export function useMyTasks() {
+// 🌐 Configuração principal
+export const config = createConfig({
+  chains: [sepolia],                                    // 🌍 Qual blockchain usar
+  connectors: [metaMask()],                            // 🔌 Quais carteiras aceitar
+  transports: {
+    [sepolia.id]: http('https://sepolia.infura.io/v3/SUA_INFURA_KEY')  // 🛣️ Como conectar
+  },
+})
+
+// 📍 COLE AQUI: Endereço do seu contrato deployado
+export const CONTRACT_ADDRESS = '0xSEU_ENDERECO_DEPLOYADO_AQUI'
+
+// 📋 COLE AQUI: ABI do seu contrato (copiado do arquivo .json)
+export const CONTRACT_ABI = [
+  // Cole aqui todo o array ABI que você copiou do arquivo TaskManager.json
+  {
+    "inputs": [
+      { "internalType": "string", "name": "_title", "type": "string" },
+      { "internalType": "string", "name": "_description", "type": "string" },
+      { "internalType": "uint256", "name": "_deadline", "type": "uint256" }
+    ],
+    "name": "createTask",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  // ... resto das funções do ABI
+] as const
+```
+
+**🤔 O que cada parte faz:**
+
+- **`config`**: "Receita" de como conectar na blockchain
+- **`CONTRACT_ADDRESS`**: "Endereço" onde seu contrato mora na blockchain
+- **`CONTRACT_ABI`**: "Manual de instruções" de todas as funções disponíveis
+- **`as const`**: Diz ao TypeScript "estes dados nunca mudam"
+
+---
+
+### 🎣 **Passo 3: Entendendo os Hooks Customizados**
+
+#### **🤔 Por que usar Hooks?**
+
+**Analogia**: Hooks são como **"funcionários especializados"** numa empresa:
+
+- **👔 Gerente de Vendas** (useCreateTask): Só cuida de criar tarefas
+- **📊 Analista de Dados** (useTaskMetrics): Só cuida de calcular estatísticas
+- **🔍 Pesquisador** (useAllUserTasks): Só cuida de buscar dados
+- **🔗 Recepcionista** (useWeb3Status): Só cuida de saber quem está logado
+
+**✅ Vantagens dos Hooks:**
+- **Reutilizável**: Usa o mesmo hook em vários componentes
+- **Organizado**: Cada hook tem uma responsabilidade específica
+- **Automático**: Atualiza dados automaticamente quando necessário
+- **Limpo**: Componente fica simples, lógica fica nos hooks
+
+### 📁 **Anatomia do `hooks/useTaskManager.ts` - Explicação Detalhada**
+
+Vamos dissecar cada hook do nosso arquivo como um **manual técnico**:
+
+#### 🚀 **Hook 1: useAllUserTasks() - O "Caçador de Dados"**
+
+```typescript
+export function useAllUserTasks() {
   const { address } = useAccount()
+  return useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: CONTRACT_ABI,
+    functionName: 'getUserTasksWithData',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address }
+  })
+}
+```
+
+**📖 Explicação linha por linha:**
+
+```typescript
+const { address } = useAccount()
+```
+- **O que faz**: Pega o endereço da carteira conectada
+- **Analogia**: Como perguntar "Qual é seu CPF?" para identificar a pessoa
+- **Resultado**: `address = "0x1a2b3c4d..."` ou `undefined` se não conectado
+
+```typescript
+return useReadContract({
+```
+- **O que faz**: Chama uma função do smart contract que **só lê dados** (não gasta gas)
+- **Analogia**: Como "consultar saldo no banco" - só olha, não mexe
+
+```typescript
+address: CONTRACT_ADDRESS,
+abi: CONTRACT_ABI,
+functionName: 'getUserTasksWithData',
+```
+- **address**: "Onde" está o contrato (endereço na blockchain)
+- **abi**: "Manual de instruções" para falar com o contrato
+- **functionName**: "Qual função" queremos chamar no contrato
+
+```typescript
+args: address ? [address] : undefined,
+```
+- **O que faz**: Passa o endereço da carteira como parâmetro
+- **Analogia**: Como dizer "mostre as tarefas do CPF 123.456.789-00"
+- **Se não conectado**: Não passa nenhum parâmetro
+
+```typescript
+query: { enabled: !!address }
+```
+- **O que faz**: Só executa a busca se tiver carteira conectada
+- **`!!address`**: Converte para true/false (double negation)
+- **Analogia**: "Só procure tarefas se a pessoa se identificou"
+
+#### 📊 **Hook 2: useTaskMetrics() - O "Calculadora Inteligente"**
+
+```typescript
+export function useTaskMetrics() {
+  const { data: allTasks, isLoading, error, refetch } = useAllUserTasks()
   
-  return useReadContract({
-    address: CONTRACT_ADDRESS,
-    abi: CONTRACT_ABI,
-    functionName: 'getMyTasks',
-    account: address,
-    enabled: !!address, // Só busca se conectado
-  })
-}
+  // Se ainda está carregando ou sem dados
+  if (isLoading || !allTasks) {
+    return {
+      total: 0, concluidas: 0, pendentes: 0, weiInStake: 0,
+      tasks: [], isLoading: true, error: null, refetch
+    }
+  }
 
-// 🔍 Hook: Buscar dados de uma tarefa específica (dados reais)
-export function useTask(taskId: number | undefined) {
-  return useReadContract({
-    address: CONTRACT_ADDRESS,
-    abi: CONTRACT_ABI,
-    functionName: 'tasks',
-    args: taskId ? [BigInt(taskId)] : undefined,
-    enabled: !!taskId,
-  })
-}
+  // Se não há tarefas
+  if (!Array.isArray(allTasks) || allTasks.length === 0) {
+    return {
+      total: 0, concluidas: 0, pendentes: 0, weiInStake: 0,
+      tasks: [], isLoading: false, error: null, refetch
+    }
+  }
 
-// 📊 Hook: Buscar total de tarefas no sistema
-export function useTotalTasks() {
-  return useReadContract({
-    address: CONTRACT_ADDRESS,
-    abi: CONTRACT_ABI,
-    functionName: 'totalTasks',
-  })
-}
+  // 🧮 Calcular métricas automaticamente
+  let concluidas = 0
+  let totalStake = 0
 
-// ✍️ Hook: Criar nova tarefa (funcionando)
+  allTasks.forEach((task: any) => {
+    if (task.status) {
+      concluidas++
+    } else {
+      totalStake += Number(task.stakeAmount)
+    }
+  })
+
+  return {
+    total: allTasks.length,
+    concluidas,
+    pendentes: allTasks.length - concluidas,
+    weiInStake: totalStake / 1e18,
+    tasks: allTasks,
+    isLoading: false,
+    error,
+    refetch
+  }
+}
+```
+
+**📖 Explicação detalhada:**
+
+**🔍 Primeira parte - Buscar dados:**
+```typescript
+const { data: allTasks, isLoading, error, refetch } = useAllUserTasks()
+```
+- **data: allTasks**: Renomeia `data` para `allTasks` para ficar mais claro
+- **isLoading**: `true` = ainda buscando dados, `false` = terminou
+- **error**: Se deu erro, contém detalhes do erro
+- **refetch**: Função para "buscar novamente" quando quiser atualizar
+
+**🔄 Estados de carregamento:**
+```typescript
+if (isLoading || !allTasks) {
+  return { total: 0, ..., isLoading: true }
+}
+```
+- **Por que verificar**: Evita erros quando dados ainda não chegaram
+- **Analogia**: Como dizer "ainda estou contando, aguarde..." numa votação
+- **Retorna zeros**: Para não quebrar a interface
+
+**🎯 Verificação de dados vazios:**
+```typescript
+if (!Array.isArray(allTasks) || allTasks.length === 0) {
+  return { total: 0, ..., tasks: [] }
+}
+```
+- **Array.isArray()**: Confirma que é realmente uma lista
+- **length === 0**: Confirma que a lista não está vazia
+- **Analogia**: Como conferir se a gaveta está vazia antes de contar objetos
+
+**🧮 Cálculo das métricas:**
+```typescript
+let concluidas = 0
+let totalStake = 0
+
+allTasks.forEach((task: any) => {
+  if (task.status) {          // Se tarefa foi concluída
+    concluidas++
+  } else {                    // Se ainda está pendente
+    totalStake += Number(task.stakeAmount)  // Soma valor apostado
+  }
+})
+```
+- **forEach**: Percorre cada tarefa da lista
+- **task.status**: `true` = concluída, `false` = pendente
+- **task.stakeAmount**: Valor apostado na tarefa (em wei)
+- **Number()**: Converte de string para número
+
+**📊 Retorno final:**
+```typescript
+return {
+  total: allTasks.length,                    // Quantidade total
+  concluidas,                                // Quantidade concluídas
+  pendentes: allTasks.length - concluidas,   // Total - concluídas = pendentes
+  weiInStake: totalStake / 1e18,            // Converte wei para ETH
+  tasks: allTasks,                          // Dados completos
+  isLoading: false,                         // Não está mais carregando
+  error,                                    // Erro, se houver
+  refetch                                   // Função para atualizar
+}
+```
+
+#### ✍️ **Hook 3: useCreateTask() - O "Construtor de Tarefas"**
+
+```typescript
 export function useCreateTask() {
   const { writeContract, isPending, error } = useWriteContract()
   
-  const createTask = async (
-    title: string, 
-    description: string, 
-    deadline: Date,
-    stakeAmount: string = '0.001'
-  ) => {
+  const createTask = async (title: string, description: string, deadline: Date, stakeAmount: string = '0.001') => {
     const deadlineTimestamp = Math.floor(deadline.getTime() / 1000)
-    
     await writeContract({
       address: CONTRACT_ADDRESS,
       abi: CONTRACT_ABI,
@@ -3650,8 +3340,44 @@ export function useCreateTask() {
   
   return { createTask, isPending, error }
 }
+```
 
-// ✅ Hook: Completar tarefa (funcionando)
+**📖 Explicação detalhada:**
+
+**🔧 Configuração inicial:**
+```typescript
+const { writeContract, isPending, error } = useWriteContract()
+```
+- **writeContract**: Função que envia transações para blockchain
+- **isPending**: `true` = transação sendo processada
+- **error**: Detalhes de erro, se houver
+
+**📝 Função de criação:**
+```typescript
+const createTask = async (title, description, deadline, stakeAmount = '0.001') => {
+```
+- **async**: Função assíncrona (demora um tempo para completar)
+- **Parâmetros**: Dados necessários para criar a tarefa
+- **stakeAmount = '0.001'**: Valor padrão se não informado
+
+**🗓️ Conversão de data:**
+```typescript
+const deadlineTimestamp = Math.floor(deadline.getTime() / 1000)
+```
+- **deadline.getTime()**: Converte data para milissegundos
+- **/ 1000**: Blockchain usa segundos, não milissegundos
+- **Math.floor()**: Remove decimais para ficar número inteiro
+
+**💰 Conversão de valor:**
+```typescript
+value: parseEther(stakeAmount),
+```
+- **parseEther('0.001')**: Converte "0.001 ETH" para "1000000000000000 wei"
+- **Por que**: Blockchain trabalha com wei (menor unidade)
+
+#### ✅ **Hook 4: useCompleteTask() - O "Finalizador"**
+
+```typescript
 export function useCompleteTask() {
   const { writeContract, isPending, error } = useWriteContract()
   
@@ -3666,11 +3392,20 @@ export function useCompleteTask() {
   
   return { completeTask, isPending, error }
 }
+```
 
-// 🔗 Hook: Status da conexão
+**📖 Explicação detalhada:**
+
+**🎯 Função simples e direta:**
+- **Parâmetro**: Só precisa do ID da tarefa
+- **BigInt(taskId)**: Converte número JavaScript para formato blockchain
+- **Sem value**: Não envia ETH junto (apenas executa)
+
+#### 🔗 **Hook 5: useWeb3Status() - O "Vigia da Conexão"**
+
+```typescript
 export function useWeb3Status() {
   const { address, isConnected } = useAccount()
-  
   return {
     address,
     isConnected,
@@ -3679,66 +3414,470 @@ export function useWeb3Status() {
 }
 ```
 
-#### 📁 **Atualizar `app/page.tsx` para usar dados reais:**
+**📖 Explicação detalhada:**
+
+**📍 Formatação de endereço:**
+```typescript
+shortAddress: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : null
+```
+- **address.slice(0, 6)**: Primeiros 6 caracteres "0x1a2b"
+- **address.slice(-4)**: Últimos 4 caracteres "c4d5"
+- **Resultado**: "0x1a2b...c4d5" (mais fácil de ler)
+
+---
+
+### 💻 **Passo 4: Entendendo a Página Principal (page.tsx)**
+
+Agora vamos dissecar o código da página principal para entender como tudo se conecta:
+
+#### **📋 Estrutura Geral do Componente**
 
 ```typescript
-// No useMemo de tasks, substitua por dados reais:
-
-const tasks = useMemo(() => {
-  if (!taskIds || !isConnected) return []
+export default function Web3TodoPage() {
+  const [showCreateModal, setShowCreateModal] = useState(false)
   
-  // 🔄 IMPLEMENTAÇÃO REAL: Buscar cada tarefa individualmente
-  // Por enquanto retorna array vazio, mas cada taskId seria buscado via useTask()
-  return taskIds.map(id => {
-    // Aqui você buscaria cada tarefa individualmente:
-    // const { data: taskData } = useTask(Number(id))
-    // return taskData ? formatTaskForUI(taskData) : null
-    return null
-  }).filter(Boolean)
-}, [taskIds, isConnected])
+  // 🔗 Hooks Web3 ULTRA-SIMPLIFICADOS
+  const { connectors, connect } = useConnect()
+  const { disconnect } = useDisconnect()
+  const { isConnected, shortAddress } = useWeb3Status()
+  const { refetchBalance } = useContractBalance()
+  const chainId = useChainId()
+  
+  // 🚀 UM ÚNICO HOOK para tudo: métricas + tarefas + dados
+  const {
+    total, concluidas, pendentes, weiInStake, tasks,
+    isLoading: loadingTasks, refetch: refetchTasks
+  } = useTaskMetrics()
+}
 ```
 
-### 🎯 **Resumo Final: Sua Jornada Web3 Completa**
+**📖 Explicação detalhada dos hooks:**
 
-**✅ O que você conquistou:**
+#### **🔌 Hooks de Conexão**
 
-1. **🏗️ Smart Contract**: Criou e deployou na blockchain Sepolia
-2. **🎨 Interface Moderna**: Manteve seu design bonito e responsivo  
-3. **🔗 Integração Web3**: Conectou frontend com blockchain
-4. **💰 Sistema de Stakes**: Implementou incentivos financeiros reais
-5. **⚡ Tempo Real**: Dados atualizados automaticamente
-6. **📱 UX Perfeita**: Experiência de usuário fluida
+```typescript
+const { connectors, connect } = useConnect()
+const { disconnect } = useDisconnect()
+```
+- **connectors**: Lista de carteiras disponíveis (MetaMask, WalletConnect, etc.)
+- **connect()**: Função para conectar uma carteira específica
+- **disconnect()**: Função para desconectar a carteira atual
 
-**🚀 Arquitetura Final:**
+#### **🌐 Hook de Verificação de Rede**
+
+```typescript
+const chainId = useChainId()
+const isCorrectNetwork = chainId === sepolia.id
+const networkName = chainId === sepolia.id ? 'Sepolia' : `Rede ${chainId}`
+```
+- **chainId**: ID numérico da rede atual (Sepolia = 11155111)
+- **isCorrectNetwork**: `true` se está na Sepolia, `false` se não
+- **networkName**: Nome amigável da rede para exibir na interface
+
+#### **🎯 Hook Central - useTaskMetrics()**
+
+```typescript
+const {
+  total, concluidas, pendentes, weiInStake, tasks,
+  isLoading: loadingTasks, refetch: refetchTasks
+} = useTaskMetrics()
+```
+
+**🚀 Este é o hook MAIS IMPORTANTE! Ele faz TUDO:**
+
+- **total**: Quantidade total de tarefas
+- **concluidas**: Quantidade de tarefas concluídas
+- **pendentes**: Quantidade de tarefas pendentes  
+- **weiInStake**: Valor total apostado em ETH
+- **tasks**: Array com dados completos de todas as tarefas
+- **loadingTasks**: `true` = carregando dados da blockchain
+- **refetchTasks**: Função para buscar dados novamente
+
+#### **🔄 Função de Conectar/Desconectar Carteira**
+
+```typescript
+const handleConnectWallet = () => {
+  if (isConnected) {
+    disconnect()
+  } else {
+    const metamask = connectors.find(c => c.name === 'MetaMask')
+    if (metamask) connect({ connector: metamask })
+  }
+}
+```
+
+**📖 Passo a passo:**
+
+1. **Verifica se já está conectado**: `if (isConnected)`
+2. **Se conectado**: Chama `disconnect()` para desconectar
+3. **Se não conectado**: Procura MetaMask na lista de conectores
+4. **Se encontrou MetaMask**: Chama `connect()` para conectar
+
+#### **🔄 Função de Atualizar Dados**
+
+```typescript
+const handleRefresh = async () => {
+  await Promise.all([refetchTasks(), refetchBalance()])
+}
+```
+
+**📖 O que faz:**
+- **refetchTasks()**: Busca tarefas novamente na blockchain
+- **refetchBalance()**: Atualiza saldo do contrato
+- **Promise.all()**: Executa ambas ao mesmo tempo (mais rápido)
+- **async/await**: Aguarda terminar antes de continuar
+
+#### **🎨 Estrutura Visual da Interface**
+
+```typescript
+return (
+  <TooltipProvider>
+    <div className="min-h-screen bg-gray-50 text-gray-900">
+      <main className="container mx-auto p-4 sm:p-6 lg:p-8">
+        {/* 🎯 CABEÇALHO */}
+        <header className="mb-8">
+          {/* Título + Botão de conectar */}
+        </header>
+
+        {/* 📊 SEÇÃO DE MÉTRICAS */}
+        <section className="mb-10">
+          {/* 4 cards com estatísticas */}
+        </section>
+
+        {/* 📋 SEÇÃO DE TAREFAS */}
+        <section>
+          {/* Lista de tarefas + botão nova tarefa */}
+        </section>
+      </main>
+    </div>
+  </TooltipProvider>
+)
+```
+
+#### **⚡ Renderização Condicional Inteligente**
+
+**🔍 Para o carregamento:**
+```typescript
+{loadingTasks && isConnected ? (
+  <div className="text-center p-8">
+    <Loader className="animate-spin h-8 w-8 mx-auto mb-4" />
+    <p>Carregando tarefas da blockchain...</p>
+  </div>
+) : /* ... outras condições */ }
+```
+
+**📝 Para lista vazia:**
+```typescript
+(!tasks || tasks.length === 0) && isConnected ? (
+  <div className="text-center p-8">
+    <p className="text-gray-500">Você ainda não tem tarefas. Crie sua primeira!</p>
+  </div>
+) : /* ... outras condições */
+```
+
+**📋 Para lista de tarefas:**
+```typescript
+isConnected && tasks ? (
+  tasks.map((task: any) => (
+    <TaskItem 
+      key={Number(task.id)} 
+      task={task}
+      isConnected={isConnected}
+      onTaskUpdate={refetchTasks}
+    />
+  ))
+) : null
+```
+
+**🚫 Para usuário desconectado:**
+```typescript
+{!isConnected && (
+  <div className="text-center p-8">
+    <AlertCircle className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+    <p className="text-gray-500">Conecte sua carteira para ver suas tarefas</p>
+  </div>
+)}
+```
+
+#### **🔄 Por que o wagmi otimiza automaticamente**
+
+**🧠 Otimizações automáticas do wagmi:**
+- **Cache automático**: Não refaz chamadas desnecessárias  
+- **Invalidação inteligente**: Só atualiza quando blockchain muda
+- **Batching**: Agrupa múltiplas atualizações em uma só
+- **Background refetch**: Atualiza dados quando necessário
+
+#### **📊 Fluxo Completo de Dados:**
+
+```
+👤 USUÁRIO conecta carteira
+    ↓
+🎣 useTaskMetrics() → useAllUserTasks() 
+    ↓
+📡 Chama getUserTasksWithData() na blockchain
+    ↓
+🏪 Smart Contract retorna dados completos
+    ↓
+🧮 useTaskMetrics() calcula estatísticas
+    ↓
+💻 Componente renderiza interface
+    ↓
+👤 USUÁRIO vê: total, concluídas, pendentes, lista de tarefas
+
+👤 USUÁRIO cria nova tarefa
+    ↓
+⚡ Transação é minerada na blockchain
+    ↓
+📡 wagmi detecta mudança automaticamente
+    ↓
+🔄 useTaskMetrics() busca dados atualizados
+    ↓
+💻 Interface atualiza sozinha! ✨
+```
+
+#### **🎨 Componente MetricCard**
+
+```typescript
+function MetricCard({ title, value, icon, tooltip }) {
+  const content = (
+    <Card className="transition-shadow duration-300 hover:shadow-lg cursor-pointer">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium text-gray-500">{title}</CardTitle>
+        {icon}
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold">{value}</div>
+      </CardContent>
+    </Card>
+  )
+
+  // Se tem tooltip, envolve com Tooltip
+  if (tooltip) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>{content}</TooltipTrigger>
+        <TooltipContent><p>{tooltip}</p></TooltipContent>
+      </Tooltip>
+    )
+  }
+
+  return content
+}
+```
+
+**📖 Características do MetricCard:**
+- **Reutilizável**: Usado para todos os 4 cards de métricas
+- **Hover effect**: Sombra aparece quando passa mouse
+- **Tooltip opcional**: Mostra explicação se fornecida
+- **Layout flexível**: Ícone à direita, texto à esquerda
+
+---
+
+### 🧩 **Passo 6: Componentes Auxiliares**
+
+#### **📝 TaskItem Component**
+
+O `TaskItem` é responsável por exibir cada tarefa individual:
+
+```typescript
+<TaskItem 
+  key={Number(task.id)} 
+  task={task}                    // Dados completos da tarefa
+  isConnected={isConnected}      // Se carteira está conectada
+  onTaskUpdate={refetchTasks}    // Callback para atualizar lista
+/>
+```
+
+**🔗 Props explicadas:**
+- **task**: Objeto com todos os dados da tarefa (id, title, description, status, etc.)
+- **isConnected**: Permite/bloqueia ações baseadas na conexão
+- **onTaskUpdate**: Função chamada após completar tarefa (atualiza a lista)
+
+#### **📝 CreateTaskModal Component**
+
+Modal para criar novas tarefas:
+
+```typescript
+<CreateTaskModal 
+  open={showCreateModal}                    // Se modal está aberto
+  onClose={() => setShowCreateModal(false)} // Função para fechar
+/>
+```
+
+**🎯 Funcionalidades:**
+- **Formulário controlado**: Todos inputs são controlados por estado
+- **Validação**: Impede envio com dados inválidos
+- **Loading state**: Mostra "Criando..." durante transação
+- **Auto-reset**: Limpa formulário após sucesso
+
+---
+
+### 🧪 **Passo 6: Testando a Integração**
+
+#### **📋 Checklist de Teste Essencial**
+
+**🔌 Conectividade:**
+- [ ] Botão "Conectar Carteira" funciona
+- [ ] MetaMask abre e solicita conexão
+- [ ] Endereço aparece no cabeçalho
+- [ ] Indicador mostra rede "Sepolia"
+
+**📊 Funcionalidades:**
+- [ ] Modal "Nova Tarefa" abre
+- [ ] Transações são assinadas no MetaMask
+- [ ] Lista de tarefas atualiza automaticamente
+- [ ] Botão "Atualizar" funciona
+
+#### **🚨 Problemas Comuns**
+
+**❌ "Contract not found"**
+- Verifique `CONTRACT_ADDRESS` no `lib/web3.ts`
+- Confirme no Etherscan: https://sepolia.etherscan.io/address/SEU_ENDERECO
+
+**❌ "Wrong network"**
+- MetaMask deve estar conectado à rede Sepolia
+- Chain ID deve ser 11155111
+
+**❌ "Insufficient funds"**
+- Use faucet Sepolia: https://sepoliafaucet.com/
+
+---
+
+### 🚀 **Passo 7: Deploy e Produção**
+
+#### **📦 Build da Aplicação**
+
+```bash
+# Verificar se tudo compila
+pnpm build
+
+# Testar build localmente
+pnpm start
+```
+
+#### **🌐 Deploy no Vercel**
+
+```bash
+# Conectar repositório ao Vercel
+# Configurar variáveis de ambiente:
+# - NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
+# - NEXT_PUBLIC_ALCHEMY_API_KEY
+```
+
+#### **⚙️ Variáveis de Ambiente**
+
+```env
+# .env.local (para produção)
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=seu_project_id
+NEXT_PUBLIC_ALCHEMY_API_KEY=sua_alchemy_key
+```
+
+**🔑 Por que NEXT_PUBLIC_:**
+- Variáveis com `NEXT_PUBLIC_` ficam disponíveis no browser
+- Necessário para bibliotecas Web3 funcionarem no frontend
+
+---
+
+### 🎯 **Resumo Final: O que Conquistamos**
+
+**✅ Sistema Completo Funcionando:**
+
+1. **🔌 Conexão**: MetaMask conecta no nosso site
+2. **📝 Criação**: Usuário cria tarefas que vão para blockchain
+3. **📊 Visualização**: Dados atualizados em tempo real
+4. **✅ Interação**: Completar tarefas com transações reais
+5. **💰 Stakes**: Sistema financeiro com ETH real (testnet)
+6. **🔄 Sincronização**: Interface atualiza automaticamente
+7. **🛡️ Validação**: Verificação de rede e estados
+
+**🧩 Arquitetura Final Integrada:**
 
 ```
 👤 USUÁRIO
-    ↓ clica "Conectar Carteira"
-🦊 METAMASK
-    ↓ conecta na Sepolia
-💻 REACT FRONTEND (Next.js + Tailwind)
-    ↓ usa hooks wagmi
-🎣 HOOKS CUSTOMIZADOS
-    ↓ chamam viem
+    ↓ clica "Criar Tarefa"
+💻 COMPONENTE CreateTaskModal
+    ↓ chama useCreateTask()
+🎣 HOOK useCreateTask  
+    ↓ usa writeContract()
 ⚡ VIEM + WAGMI
-    ↓ traduzem para blockchain
-🌐 SEPOLIA TESTNET
-    ↓ executa smart contract
-🏪 TASKMANAGER CONTRACT
-    ↓ emite eventos
-📡 WAGMI LISTENING
-    ↓ detecta mudanças
-🔄 AUTO-UPDATE UI
-    ↓ mostra novos dados
-👤 USUÁRIO vê resultado! ✨
+    ↓ traduz e envia para blockchain
+🦊 METAMASK
+    ↓ usuário assina transação
+🌐 SEPOLIA BLOCKCHAIN
+    ↓ executa createTask() no smart contract
+📡 EVENTO TaskCreated
+    ↓ wagmi detecta automaticamente
+🔄 CACHE INVALIDATION
+    ↓ useTaskMetrics() busca dados novos
+📊 MÉTRICAS RECALCULADAS
+    ↓ componente re-renderiza
+💻 INTERFACE ATUALIZADA
+    ↓ nova tarefa aparece na lista
+👤 USUÁRIO vê resultado instantâneo! ✨
 ```
 
-**🧩 Stack Tecnológica Final:**
-- **Frontend**: Next.js 14 + TypeScript + Tailwind CSS
+**🎯 Funcionalidades Implementadas:**
+
+- ✅ **Conexão de Carteira**: MetaMask, WalletConnect
+- ✅ **Verificação de Rede**: Força uso da Sepolia
+- ✅ **Gestão de Estado**: Cache inteligente com wagmi
+- ✅ **Transações**: Criar e completar tarefas
+- ✅ **Métricas Tempo Real**: Estatísticas automáticas
+- ✅ **Interface Responsiva**: Funciona em mobile/desktop
+- ✅ **Loading States**: Feedback visual durante operações
+- ✅ **Error Handling**: Tratamento de erros de rede
+- ✅ **Tooltips Informativos**: Explicações contextuais
+- ✅ **Sistema de Refresh**: Atualização manual quando necessário
+
+**🚀 Seu app agora é um DApp completo!**
+
+- ✅ **D**ecentralized: Roda na blockchain Ethereum
+- ✅ **A**pplication: Interface moderna e intuitiva  
+- ✅ **P**rotocol: Smart contract com regras automáticas
+
+**🎓 Conhecimentos Adquiridos:**
+
+- 🔧 **Integração Web3**: Como conectar React com blockchain
+- 🎣 **Hooks Customizados**: Organização e reutilização de lógica
+- ⚡ **Otimização**: Cache automático e performance
+- 🔄 **Estado Reativo**: Atualizações automáticas de dados
+- 🛡️ **Validações**: Verificação de rede e estados
+- 🎨 **UX Web3**: Experiência de usuário em DApps
+- 📡 **Comunicação Blockchain**: Leitura e escrita de contratos
+
+---
+
+## 🎉 **Conclusão da Aula 3**
+
+**🏆 Parabéns! Você construiu um DApp completo do zero!**
+
+**✅ Jornada Conquistada:**
+
+1. **🏗️ Smart Contract**: Criou e deployou na blockchain Sepolia
+2. **🎣 Hooks Organizados**: Desenvolveu lógica Web3 reutilizável
+3. **🔗 Configuração Web3**: Conectou frontend com blockchain via wagmi
+4. **💻 Interface Integrada**: Implementou UI moderna com funcionalidades Web3
+5. **⚡ Performance Otimizada**: Cache automático e atualizações em tempo real
+6. **🧪 Sistema Testado**: Validou todas as funcionalidades essenciais
+
+**🧩 Stack Tecnológica Dominada:**
+- **Frontend**: Next.js 15 + TypeScript + Tailwind CSS
 - **UI Components**: shadcn/ui + Radix UI + Lucide Icons
 - **Web3**: wagmi + viem + TanStack Query
 - **Blockchain**: Ethereum Sepolia + Alchemy/Infura
 - **Smart Contract**: Solidity + Foundry
 - **Carteira**: MetaMask + WalletConnect
 
-**🎉 Parabéns!** Você transformou um frontend React comum em um **DApp (Decentralized Application)** completo, mantendo a simplicidade e elegância da interface original!
+**🚀 Próximos Passos:**
+- Deploy em produção no Vercel
+- Migrar para mainnet Ethereum
+- Adicionar novas funcionalidades (editár tarefas, categorias, etc.)
+- Implementar temas dark/light
+- Adicionar notificações push
+
+**🎓 Você agora domina:**
+- 🎣 **Hooks Customizados**: Organização e reutilização de lógica Web3
+- 🔧 **Configuração Wagmi**: Setup completo de provedores e conexões
+- ⚡ **Performance Web3**: Cache automático e otimizações
+- 💻 **Integração Frontend**: React + TypeScript + Blockchain
+- 🧪 **Testes e Debug**: Validação de funcionalidades Web3
