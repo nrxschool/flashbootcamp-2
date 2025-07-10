@@ -86,6 +86,18 @@ contract TaskManager {
         return tasks[_id];
     }
 
+    // 🚀 NOVA FUNÇÃO: Retorna todas as tarefas do usuário com dados completos
+    function getUserTasksWithData(address _user) public view returns (Task[] memory) {
+        uint256[] memory taskIds = userTasks[_user];
+        Task[] memory userTasksData = new Task[](taskIds.length);
+        
+        for (uint256 i = 0; i < taskIds.length; i++) {
+            userTasksData[i] = tasks[taskIds[i]];
+        }
+        
+        return userTasksData;
+    }
+
     function getTaskCount() public view returns (uint256) {
         return taskCount;
     }

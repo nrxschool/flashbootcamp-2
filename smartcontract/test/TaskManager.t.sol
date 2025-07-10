@@ -7,6 +7,7 @@ import {TaskManager} from "../src/TaskManager.sol";
 contract TaskManagerTest is Test {
     TaskManager public taskManager;
     address public user1 = makeAddr("user1");
+    address public user2 = makeAddr("user2");
 
     event TaskCreated(uint256 id, string title, address creator, uint256 stakeAmount, uint256 deadline);
     event TaskCompleted(uint256 id, uint256 stakeReturned);
@@ -15,6 +16,7 @@ contract TaskManagerTest is Test {
     function setUp() public {
         taskManager = new TaskManager();
         vm.deal(user1, 1 ether);
+        vm.deal(user2, 1 ether);
     }
 
     // Teste 1: Criar tarefa
@@ -87,5 +89,112 @@ contract TaskManagerTest is Test {
             assertEq(task.stakeAmount, stakeAmount);
             assertEq(task.status, false); // Todas ainda pendentes
         }
+    }
+
+    // 🚀 Teste 4: getUserTasksWithData - Buscar todas as tarefas com dados completos
+    function test_GetUserTasksWithData() public {
+        uint256 stakeAmount = 0.001 ether;
+        uint256 deadline = block.timestamp + 1000;
+        
+        // User1 cria 4 tarefas
+        vm.startPrank(user1);
+        taskManager.createTask{value: stakeAmount}("Tarefa A", "Descricao A", deadline);
+        taskManager.createTask{value: stakeAmount}("Tarefa B", "Descricao B", deadline + 100);
+        taskManager.createTask{value: stakeAmount}("Tarefa C", "Descricao C", deadline + 200);
+        taskManager.createTask{value: stakeAmount}("Tarefa D", "Descricao D", deadline + 300);
+        vm.stopPrank();
+        
+        // User2 cria 1 tarefa (para garantir isolamento)
+        vm.prank(user2);
+        taskManager.createTask{value: stakeAmount}("Tarefa User2", "Descricao User2", deadline);
+        
+        // Completar 2 tarefas do user1
+        vm.startPrank(user1);
+        taskManager.completeTask(1); // Tarefa A completada
+        taskManager.completeTask(3); // Tarefa C completada
+        vm.stopPrank();
+        
+        // 🎯 BUSCAR TAREFAS COM DADOS COMPLETOS
+        TaskManager.Task[] memory userTasksWithData = taskManager.getUserTasksWithData(user1);
+        
+        // Verificar quantidade de tarefas
+        assertEq(userTasksWithData.length, 4, "Deve retornar 4 tarefas do user1");
+        
+        // Verificar dados da Tarefa A (ID 1 - concluída)
+        assertEq(userTasksWithData[0].id, 1);
+        assertEq(userTasksWithData[0].title, "Tarefa A");
+        assertEq(userTasksWithData[0].description, "Descricao A");
+        assertEq(userTasksWithData[0].creator, user1);
+        assertEq(userTasksWithData[0].stakeAmount, stakeAmount);
+        assertEq(userTasksWithData[0].status, true); // Concluída
+        assertEq(userTasksWithData[0].stakeReturned, true);
+        
+        // Verificar dados da Tarefa B (ID 2 - pendente)
+        assertEq(userTasksWithData[1].id, 2);
+        assertEq(userTasksWithData[1].title, "Tarefa B");
+        assertEq(userTasksWithData[1].description, "Descricao B");
+        assertEq(userTasksWithData[1].creator, user1);
+        assertEq(userTasksWithData[1].stakeAmount, stakeAmount);
+        assertEq(userTasksWithData[1].status, false); // Pendente
+        assertEq(userTasksWithData[1].stakeReturned, false);
+        
+        // Verificar dados da Tarefa C (ID 3 - concluída)
+        assertEq(userTasksWithData[2].id, 3);
+        assertEq(userTasksWithData[2].title, "Tarefa C");
+        assertEq(userTasksWithData[2].status, true); // Concluída
+        
+        // Verificar dados da Tarefa D (ID 4 - pendente)
+        assertEq(userTasksWithData[3].id, 4);
+        assertEq(userTasksWithData[3].title, "Tarefa D");
+        assertEq(userTasksWithData[3].status, false); // Pendente
+        
+        // 🔍 COMPARAR com dados individuais via getTask
+        for (uint i = 0; i < userTasksWithData.length; i++) {
+            TaskManager.Task memory individualTask = taskManager.getTask(userTasksWithData[i].id);
+            
+            // Verificar se dados são idênticos
+            assertEq(userTasksWithData[i].id, individualTask.id);
+            assertEq(userTasksWithData[i].title, individualTask.title);
+            assertEq(userTasksWithData[i].description, individualTask.description);
+            assertEq(userTasksWithData[i].creator, individualTask.creator);
+            assertEq(userTasksWithData[i].stakeAmount, individualTask.stakeAmount);
+            assertEq(userTasksWithData[i].status, individualTask.status);
+            assertEq(userTasksWithData[i].stakeReturned, individualTask.stakeReturned);
+            assertEq(userTasksWithData[i].deadline, individualTask.deadline);
+            assertEq(userTasksWithData[i].createdAt, individualTask.createdAt);
+        }
+        
+        // 🔒 VERIFICAR ISOLAMENTO: User2 deve ter apenas 1 tarefa
+        TaskManager.Task[] memory user2TasksWithData = taskManager.getUserTasksWithData(user2);
+        assertEq(user2TasksWithData.length, 1, "User2 deve ter apenas 1 tarefa");
+        assertEq(user2TasksWithData[0].title, "Tarefa User2");
+        assertEq(user2TasksWithData[0].creator, user2);
+        
+        // 📊 VERIFICAR MÉTRICAS
+        uint256 completedTasks = 0;
+        uint256 pendingTasks = 0;
+        uint256 totalStakeInPending = 0;
+        
+        for (uint i = 0; i < userTasksWithData.length; i++) {
+            if (userTasksWithData[i].status) {
+                completedTasks++;
+            } else {
+                pendingTasks++;
+                totalStakeInPending += userTasksWithData[i].stakeAmount;
+            }
+        }
+        
+        assertEq(completedTasks, 2, "Deve ter 2 tarefas concluidas");
+        assertEq(pendingTasks, 2, "Deve ter 2 tarefas pendentes");
+        assertEq(totalStakeInPending, stakeAmount * 2, "Stake total pendente deve ser 2x stakeAmount");
+    }
+
+    // 🔄 Teste 5: getUserTasksWithData com usuário sem tarefas
+    function test_GetUserTasksWithData_EmptyUser() public {
+        address emptyUser = makeAddr("emptyUser");
+        
+        TaskManager.Task[] memory emptyUserTasks = taskManager.getUserTasksWithData(emptyUser);
+        
+        assertEq(emptyUserTasks.length, 0, "Usuario sem tarefas deve retornar array vazio");
     }
 }

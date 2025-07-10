@@ -5,55 +5,34 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { CheckSquare, Loader, Coins } from 'lucide-react'
-import { useTaskData, useCompleteTask } from '@/hooks/useTaskManager'
+import { useCompleteTask } from '@/hooks/useTaskManager'
 
 interface TaskItemProps {
-  taskId: number
+  task: any // Dados completos da tarefa da blockchain
   isConnected: boolean
+  onTaskUpdate?: () => void // Callback para atualizar lista
 }
 
-export function TaskItem({ taskId, isConnected }: TaskItemProps) {
-  const { data: taskData, isLoading, error } = useTaskData(taskId)
+export function TaskItem({ task, isConnected, onTaskUpdate }: TaskItemProps) {
   const { completeTask, isPending } = useCompleteTask()
-
-  // Se está carregando
-  if (isLoading) {
-    return (
-      <Card className="bg-gray-50">
-        <CardContent className="p-4 sm:p-6">
-          <div className="flex items-center gap-3">
-            <Loader className="animate-spin h-5 w-5" />
-            <span className="text-gray-500">Carregando tarefa...</span>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // Se houve erro ou não há dados
-  if (error || !taskData) {
-    return (
-      <Card className="bg-red-50 border-red-200">
-        <CardContent className="p-4 sm:p-6">
-          <span className="text-red-600">Erro ao carregar tarefa {taskId}</span>
-        </CardContent>
-      </Card>
-    )
-  }
 
   // Processar dados da tarefa
   const now = Math.floor(Date.now() / 1000)
-  const isOverdue = now > Number(taskData.deadline) && !taskData.status
-  const isCompleted = taskData.status
-  const createdDate = new Date(Number(taskData.createdAt) * 1000)
-  const deadlineDate = new Date(Number(taskData.deadline) * 1000)
-  const stakeInEth = Number(taskData.stakeAmount) / 1e18
+  const isOverdue = now > Number(task.deadline) && !task.status
+  const isCompleted = task.status
+  const createdDate = new Date(Number(task.createdAt) * 1000)
+  const deadlineDate = new Date(Number(task.deadline) * 1000)
+  const stakeInEth = Number(task.stakeAmount) / 1e18
 
   const handleComplete = async () => {
     if (!isConnected) return
     
     try {
-      await completeTask(taskId)
+      await completeTask(Number(task.id))
+      // Atualizar lista após completar
+      setTimeout(() => {
+        onTaskUpdate && onTaskUpdate()
+      }, 2000)
     } catch (error) {
       console.error('Erro ao completar tarefa:', error)
     }
@@ -71,7 +50,7 @@ export function TaskItem({ taskId, isConnected }: TaskItemProps) {
               <h3 className={`text-lg font-semibold ${
                 isCompleted ? "text-gray-500 line-through" : "text-gray-900"
               }`}>
-                {taskData.title}
+                {task.title}
               </h3>
               <Badge
                 variant={isCompleted ? "default" : isOverdue ? "destructive" : "secondary"}
@@ -90,7 +69,7 @@ export function TaskItem({ taskId, isConnected }: TaskItemProps) {
             <p className={`text-sm text-gray-600 mb-3 ${
               isCompleted ? "text-gray-500" : ""
             }`}>
-              {taskData.description}
+              {task.description}
             </p>
             
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
@@ -139,4 +118,4 @@ export function TaskItem({ taskId, isConnected }: TaskItemProps) {
       </CardContent>
     </Card>
   )
-} 
+}

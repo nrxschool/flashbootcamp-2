@@ -1,80 +1,29 @@
+
 import { useReadContract, useWriteContract, useAccount } from 'wagmi'
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from '@/lib/web3'
 import { parseEther } from 'viem'
 
-// 🚀 NOVO: Hook que busca TODAS as tarefas com dados completos em 1 chamada
-export function useAllUserTasks() {
+export function useMyTasks() {
   const { address } = useAccount()
   return useReadContract({
     address: CONTRACT_ADDRESS,
     abi: CONTRACT_ABI,
-    functionName: 'getUserTasksWithData',
+    functionName: 'getUserTasks',
     args: address ? [address] : undefined,
     query: { enabled: !!address }
   })
 }
 
-// 📊 SUPER SIMPLIFICADO: Hook para métricas e tarefas em um só
-export function useTaskMetrics() {
-  const { data: allTasks, isLoading, error, refetch } = useAllUserTasks()
-  
-  // Se ainda está carregando ou sem dados
-  if (isLoading || !allTasks) {
-    return {
-      // Métricas
-      total: 0,
-      concluidas: 0,
-      pendentes: 0,
-      weiInStake: 0,
-      // Dados
-      tasks: [],
-      isLoading: true,
-      error: null,
-      refetch
-    }
-  }
-
-  // Se não há tarefas
-  if (!Array.isArray(allTasks) || allTasks.length === 0) {
-    return {
-      total: 0,
-      concluidas: 0,
-      pendentes: 0,
-      weiInStake: 0,
-      tasks: [],
-      isLoading: false,
-      error: null,
-      refetch
-    }
-  }
-
-  // 🧮 Calcular métricas automaticamente
-  let concluidas = 0
-  let totalStake = 0
-
-  allTasks.forEach((task: any) => {
-    if (task.status) {
-      concluidas++
-    } else {
-      totalStake += Number(task.stakeAmount)
-    }
+export function useTaskData(taskId: number | undefined) {
+  return useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: CONTRACT_ABI,
+    functionName: 'getTask',
+    args: taskId ? [BigInt(taskId)] : undefined,
+    query: { enabled: !!taskId }
   })
-
-  return {
-    // Métricas calculadas automaticamente
-    total: allTasks.length,
-    concluidas,
-    pendentes: allTasks.length - concluidas,
-    weiInStake: totalStake / 1e18,
-    // Dados completos das tarefas
-    tasks: allTasks,
-    isLoading: false,
-    error,
-    refetch
-  }
 }
 
-// ✍️ Hook: Criar tarefa (mantido igual)
 export function useCreateTask() {
   const { writeContract, isPending, error } = useWriteContract()
   
@@ -97,7 +46,6 @@ export function useCreateTask() {
   return { createTask, isPending, error }
 }
 
-// ✅ Hook: Completar tarefa (mantido igual)
 export function useCompleteTask() {
   const { writeContract, isPending, error } = useWriteContract()
   
@@ -113,7 +61,6 @@ export function useCompleteTask() {
   return { completeTask, isPending, error }
 }
 
-// 🔗 Hook: Status da conexão (mantido igual)
 export function useWeb3Status() {
   const { address, isConnected } = useAccount()
   return {
@@ -123,7 +70,15 @@ export function useWeb3Status() {
   }
 }
 
-// �� Hook: Balance do contrato (mantido igual)
+export function useTasksWithData() {
+  const { data: taskIds, isLoading, refetch } = useMyTasks()
+  return {
+    taskIds: taskIds || [],
+    isLoading,
+    refetch
+  }
+}
+
 export function useContractBalance() {
   const { data: balance, isLoading: balanceLoading, refetch: refetchBalance } = useReadContract({
     address: CONTRACT_ADDRESS,
@@ -139,13 +94,35 @@ export function useContractBalance() {
   }
 }
 
-// 🎯 Hook individual de tarefa (para compatibilidade com TaskItem)
-export function useTaskData(taskId: number | undefined) {
-  return useReadContract({
-    address: CONTRACT_ADDRESS,
-    abi: CONTRACT_ABI,
-    functionName: 'getTask',
-    args: taskId ? [BigInt(taskId)] : undefined,
-    query: { enabled: !!taskId }
+// Hook para métricas reais da blockchain
+export function useRealTaskMetrics() {
+  const { taskIds } = useTasksWithData()
+  
+  // Buscar dados das primeiras 5 tarefas (limitação do React)
+  const task1 = useTaskData(taskIds[0] ? Number(taskIds[0]) : undefined)
+  const task2 = useTaskData(taskIds[1] ? Number(taskIds[1]) : undefined) 
+  const task3 = useTaskData(taskIds[2] ? Number(taskIds[2]) : undefined)
+  const task4 = useTaskData(taskIds[3] ? Number(taskIds[3]) : undefined)
+  const task5 = useTaskData(taskIds[4] ? Number(taskIds[4]) : undefined)
+
+  const tasks = [task1.data, task2.data, task3.data, task4.data, task5.data]
+    .filter(Boolean)
+
+  let concluidas = 0
+  let totalStake = 0
+
+  tasks.forEach((task: any) => {
+    if (task.status) {
+      concluidas++
+    } else {
+      totalStake += Number(task.stakeAmount)
+    }
   })
+
+  return {
+    total: taskIds.length,
+    concluidas,
+    pendentes: taskIds.length - concluidas,
+    weiInStake: totalStake / 1e18
+  }
 }

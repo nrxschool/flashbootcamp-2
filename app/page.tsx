@@ -11,26 +11,33 @@ import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { AlertCircle, CheckCircle2, ListTodo, Loader, Coins, PlusCircle, CheckSquare, Wallet, RefreshCw } from "lucide-react"
 
-// 🔧 Imports Web3
+// 🔧 Imports Web3 SIMPLIFICADOS
 import { useConnect, useDisconnect, useChainId } from 'wagmi'
-import { useTasksWithData, useWeb3Status, useContractBalance, useRealTaskMetrics } from '@/hooks/useTaskManager'
+import { useWeb3Status, useContractBalance, useTaskMetrics } from '@/hooks/useTaskManager'
 import { CreateTaskModal } from '@/components/CreateTaskModal'
 import { TaskItem } from '@/components/TaskItem'
 import { sepolia } from 'wagmi/chains'
 
-
-
 export default function Web3TodoPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   
-  // 🔗 Hooks Web3
+  // 🔗 Hooks Web3 ULTRA-SIMPLIFICADOS
   const { connectors, connect } = useConnect()
   const { disconnect } = useDisconnect()
   const { isConnected, shortAddress } = useWeb3Status()
-  const { taskIds, isLoading: loadingTasks, refetch: refetchTasks } = useTasksWithData()
   const { refetchBalance } = useContractBalance()
-  const metrics = useRealTaskMetrics()
   const chainId = useChainId()
+  
+  // 🚀 UM ÚNICO HOOK para tudo: métricas + tarefas + dados
+  const {
+    total,
+    concluidas, 
+    pendentes,
+    weiInStake,
+    tasks,
+    isLoading: loadingTasks,
+    refetch: refetchTasks
+  } = useTaskMetrics()
   
   // Verificar se está na rede correta
   const isCorrectNetwork = chainId === sepolia.id
@@ -110,25 +117,25 @@ export default function Web3TodoPage() {
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
               <MetricCard
                 title="Total de Tarefas"
-                value={metrics.total}
+                value={total}
                 icon={<ListTodo className="h-6 w-6 text-violet-500" />}
                 tooltip="Número total de tarefas criadas"
               />
               <MetricCard
                 title="Tarefas Concluídas"
-                value={metrics.concluidas}
+                value={concluidas}
                 icon={<CheckCircle2 className="h-6 w-6 text-cyan-500" />}
                 tooltip="Tarefas finalizadas no prazo - stake devolvido"
               />
               <MetricCard
                 title="Tarefas Pendentes"
-                value={metrics.pendentes}
+                value={pendentes}
                 icon={<Loader className="h-6 w-6 text-yellow-500" />}
                 tooltip="Tarefas ainda não concluídas"
               />
               <MetricCard
                 title="ETH em Stake"
-                value={`${metrics.weiInStake.toFixed(6)} ETH`}
+                value={`${weiInStake.toFixed(6)} ETH`}
                 icon={<Coins className="h-6 w-6 text-indigo-500" />}
                 tooltip="Valor total apostado em tarefas pendentes"
               />
@@ -185,16 +192,17 @@ export default function Web3TodoPage() {
                   <Loader className="animate-spin h-8 w-8 mx-auto mb-4" />
                   <p>Carregando tarefas da blockchain...</p>
                 </div>
-              ) : (!taskIds || taskIds.length === 0) && isConnected ? (
+              ) : (!tasks || tasks.length === 0) && isConnected ? (
                 <div className="text-center p-8">
                   <p className="text-gray-500">Você ainda não tem tarefas. Crie sua primeira!</p>
                 </div>
-              ) : isConnected && taskIds ? (
-                taskIds.map((taskId: bigint) => (
+              ) : isConnected && tasks ? (
+                tasks.map((task: any) => (
                   <TaskItem 
-                    key={Number(taskId)} 
-                    taskId={Number(taskId)} 
-                    isConnected={isConnected} 
+                    key={Number(task.id)} 
+                    task={task}
+                    isConnected={isConnected}
+                    onTaskUpdate={refetchTasks}
                   />
                 ))
               ) : null}
@@ -209,8 +217,6 @@ export default function Web3TodoPage() {
           </section>
         </main>
       </div>
-      
-
       
       {/* Modal de Criar Tarefa */}
       <CreateTaskModal 
@@ -260,5 +266,3 @@ function MetricCard({
 
   return content
 }
-
-
