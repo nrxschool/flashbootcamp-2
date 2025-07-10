@@ -3,13 +3,13 @@
 "use client"
 
 import type React from "react"
-import { useState, useMemo } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { AlertCircle, CheckCircle2, ListTodo, Loader, Coins, PlusCircle, CheckSquare, Wallet } from "lucide-react"
+import { AlertCircle, CheckCircle2, ListTodo, Loader, Coins, PlusCircle, CheckSquare, Wallet, RefreshCw } from "lucide-react"
 
 // 🔧 Imports Web3
 import { useConnect, useDisconnect, useChainId } from 'wagmi'
@@ -26,9 +26,9 @@ export default function Web3TodoPage() {
   // 🔗 Hooks Web3
   const { connectors, connect } = useConnect()
   const { disconnect } = useDisconnect()
-  const { isConnected, shortAddress, address } = useWeb3Status()
-  const { taskIds, isLoading: loadingTasks } = useTasksWithData()
-  const { balance, balanceLoading, balanceInEth } = useContractBalance()
+  const { isConnected, shortAddress } = useWeb3Status()
+  const { taskIds, isLoading: loadingTasks, refetch: refetchTasks } = useTasksWithData()
+  const { balanceInEth, refetchBalance } = useContractBalance()
   const chainId = useChainId()
   
   // Verificar se está na rede correta
@@ -39,23 +39,22 @@ export default function Web3TodoPage() {
     if (isConnected) {
       disconnect()
     } else {
-      // Conecta com o primeiro conector disponível (MetaMask)
       const metamask = connectors.find(c => c.name === 'MetaMask')
-      if (metamask) {
-        connect({ connector: metamask })
-      }
+      if (metamask) connect({ connector: metamask })
     }
   }
 
-  const metrics = useMemo(() => {
-    const total = taskIds ? taskIds.length : 0
-    return { 
-      total, 
-      concluidas: 0, // Será calculado quando as tarefas carregarem
-      pendentes: total,
-      weiInStake: balanceInEth
-    }
-  }, [taskIds])
+  const handleRefresh = async () => {
+    await Promise.all([refetchTasks(), refetchBalance()])
+  }
+
+  // Métricas simples
+  const metrics = {
+    total: taskIds?.length || 0,
+    concluidas: 0, // Será mostrado quando implementarmos busca individual
+    pendentes: taskIds?.length || 0,
+    weiInStake: balanceInEth
+  }
 
   return (
     <TooltipProvider>
@@ -136,7 +135,7 @@ export default function Web3TodoPage() {
               />
               <MetricCard
                 title="ETH em Stake"
-                value={`${(metrics.weiInStake).toFixed(6)} ETH`}
+                value={`${metrics.weiInStake.toFixed(6)} ETH`}
                 icon={<Coins className="h-6 w-6 text-indigo-500" />}
                 tooltip="Valor total apostado em tarefas pendentes"
               />
@@ -147,25 +146,44 @@ export default function Web3TodoPage() {
           <section>
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-semibold text-gray-800">Tarefas</h2>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="inline-block">
+              <div className="flex gap-2">
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <Button 
-                      disabled={!isConnected} 
-                      className="bg-violet-600 hover:bg-violet-700 disabled:opacity-50"
-                      onClick={() => setShowCreateModal(true)}
+                      disabled={!isConnected || loadingTasks} 
+                      variant="outline"
+                      onClick={handleRefresh}
+                      className="border-violet-300 text-violet-600 hover:bg-violet-50"
                     >
-                      <PlusCircle className="mr-2 h-4 w-4" />
-                      Nova Tarefa
+                      <RefreshCw className={`mr-2 h-4 w-4 ${loadingTasks ? 'animate-spin' : ''}`} />
+                      Atualizar
                     </Button>
-                  </div>
-                </TooltipTrigger>
-                {!isConnected && (
+                  </TooltipTrigger>
                   <TooltipContent>
-                    <p>Conecte sua carteira para criar tarefas.</p>
+                    <p>{!isConnected ? "Conecte sua carteira" : "Atualizar lista de tarefas"}</p>
                   </TooltipContent>
-                )}
-              </Tooltip>
+                </Tooltip>
+                
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="inline-block">
+                      <Button 
+                        disabled={!isConnected} 
+                        className="bg-violet-600 hover:bg-violet-700 disabled:opacity-50"
+                        onClick={() => setShowCreateModal(true)}
+                      >
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Nova Tarefa
+                      </Button>
+                    </div>
+                  </TooltipTrigger>
+                  {!isConnected && (
+                    <TooltipContent>
+                      <p>Conecte sua carteira para criar tarefas.</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </div>
             </div>
             
             <div className="space-y-4">
@@ -198,6 +216,8 @@ export default function Web3TodoPage() {
           </section>
         </main>
       </div>
+      
+
       
       {/* Modal de Criar Tarefa */}
       <CreateTaskModal 
